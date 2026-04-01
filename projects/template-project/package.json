@@ -1,0 +1,10 @@
+{
+  "name": "template-project",
+  "version": "1.0.0",
+  "description": "A template for Oxtools contributions",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {}
+}
