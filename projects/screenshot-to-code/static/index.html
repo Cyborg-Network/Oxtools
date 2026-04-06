@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Screenshot to Code — Oxlo</title>
+  <meta name="description" content="Upload a UI screenshot and receive production-ready HTML and Tailwind CSS code via the Oxlo vision pipeline." />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            oxlo: {
+              bg:           '#0B0D14',
+              surface:      '#12151F',
+              card:         '#181C28',
+              border:       'rgba(255,255,255,0.05)',
+              primary:      '#03F7B5',
+              'primary-dk': '#02C990',
+              muted:        '#8B92A8',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+          animation: {
+            'fade-in':  'fadeIn 0.35s ease forwards',
+            'slide-up': 'slideUp 0.45s cubic-bezier(0.16,1,0.3,1) forwards',
+          },
+          keyframes: {
+            fadeIn:  { from: { opacity: '0' }, to: { opacity: '1' } },
+            slideUp: { from: { opacity: '0', transform: 'translateY(20px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+          }
+        }
+      }
+    };
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background-color: #0B0D14;
+      color: #FFFFFF;
+      font-family: 'Inter', ui-sans-serif, system-ui;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar        { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track  { background: #12151F; }
+    ::-webkit-scrollbar-thumb  { background: rgba(3,247,181,0.25); border-radius: 4px; }
+
+    /* Header gradient */
+    .header-glow {
+      background:
+        radial-gradient(ellipse 70% 50% at 50% -5%, rgba(3,247,181,0.10) 0%, transparent 65%),
+        #0B0D14;
+    }
+
+    /* Drop zone */
+    #drop-zone {
+      transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+    }
+    #drop-zone.drag-over {
+      border-color: #03F7B5 !important;
+      background-color: rgba(3,247,181,0.04);
+      transform: scale(1.005);
+    }
+
+    /* Submit button */
+    #submit-btn {
+      transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+    }
+    #submit-btn:hover:not(:disabled) {
+      background-color: #02C990;
+      box-shadow: 0 0 28px rgba(3,247,181,0.35);
+      transform: translateY(-1px);
+    }
+    #submit-btn:active:not(:disabled) { transform: translateY(0); }
+    #submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Copy button */
+    #copy-btn {
+      transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease,
+                  transform 0.12s ease;
+    }
+    #copy-btn:hover { background-color: rgba(3,247,181,0.08); transform: translateY(-1px); }
+    #copy-btn:active { transform: translateY(0); }
+
+    /* Spinner */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-top-color: #03F7B5;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Stage progress bar fill */
+    .stage-fill { transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+
+    /* Code output */
+    #code-block {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.75rem;
+      line-height: 1.75;
+      tab-size: 2;
+    }
+
+    /* Preview thumbnail */
+    #preview-img {
+      max-height: 140px;
+      object-fit: contain;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    /* Accuracy badge pulse */
+    @keyframes badgePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(3,247,181,0.35); }
+      50%       { box-shadow: 0 0 0 8px rgba(3,247,181,0); }
+    }
+    #accuracy-badge { animation: badgePulse 2.4s ease-in-out 3; }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col">
+
+  <!-- HEADER -->
+  <header class="header-glow border-b border-white/[0.05] py-4 px-6 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-oxlo-primary/10 border border-oxlo-primary/25 flex items-center justify-center shrink-0">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1" y="4" width="6" height="8" rx="1" fill="#03F7B5" opacity="0.65"/>
+          <rect x="9" y="4" width="6" height="5" rx="1" fill="#03F7B5"/>
+          <rect x="9" y="11" width="6" height="1" rx="0.5" fill="#03F7B5" opacity="0.35"/>
+        </svg>
+      </div>
+      <div>
+        <p class="text-sm font-semibold text-white leading-none">
+          Screenshot <span class="text-oxlo-primary">to Code</span>
+        </p>
+        <p class="text-[10px] text-oxlo-muted mt-0.5 hidden sm:block">Oxlo Visual Diff Engine — v2</p>
+      </div>
+    </div>
+    <a href="https://oxlo.ai" target="_blank" rel="noopener"
+       class="text-[11px] text-oxlo-muted hover:text-oxlo-primary transition-colors duration-200 flex items-center gap-1">
+      oxlo.ai
+      <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <path d="M2 10 10 2M4.5 2H10v5.5"/>
+      </svg>
+    </a>
+  </header>
+
+  <!-- MAIN -->
+  <main class="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 py-10 flex flex-col gap-8 animate-fade-in">
+
+    <!-- Hero -->
+    <section class="text-center animate-slide-up" style="animation-delay:0.04s">
+      <h1 class="text-3xl sm:text-[2.25rem] font-bold tracking-tight leading-tight text-white">
+        Convert any UI screenshot into<br class="hidden sm:block" />
+        <span class="text-oxlo-primary">production-ready HTML code</span>
+      </h1>
+      <p class="mt-3 text-oxlo-muted text-sm sm:text-[0.9375rem] max-w-lg mx-auto leading-relaxed">
+        Upload a design screenshot. The backend processes the image, generates semantic HTML
+        incorporating Tailwind CSS, and verifies against visual diff metrics.
+      </p>
+    </section>
+
+    <!-- Upload card -->
+    <section class="animate-slide-up" style="animation-delay:0.10s">
+      <div class="rounded-2xl border border-white/[0.05] p-6 sm:p-7 flex flex-col gap-5"
+           style="background:#181C28">
+
+        <!-- Drop zone -->
+        <div id="drop-zone"
+             role="button"
+             tabindex="0"
+             aria-label="Upload screenshot — click or drag and drop"
+             class="relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-white/[0.10] py-12 px-6 cursor-pointer group
+                    hover:border-oxlo-primary/40 transition-all">
+
+          <input id="file-input" type="file" accept="image/*"
+                 class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                 aria-hidden="true" />
+
+          <!-- Upload icon -->
+          <div class="w-12 h-12 rounded-xl bg-oxlo-primary/10 border border-oxlo-primary/20
+                      flex items-center justify-center
+                      group-hover:scale-105 transition-transform duration-200">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                 stroke="#03F7B5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </div>
+
+          <div class="text-center pointer-events-none">
+            <p class="text-white text-sm font-medium">Drag and drop a screenshot here</p>
+            <p class="text-oxlo-muted text-xs mt-1">or click to select a file &nbsp;&middot;&nbsp; PNG, JPG, WEBP</p>
+          </div>
+
+          <!-- Thumbnail preview (shown after file selection) -->
+          <div id="preview-wrapper" class="hidden flex-col items-center gap-2">
+            <img id="preview-img" src="" alt="Selected screenshot preview" />
+            <p id="file-name" class="text-oxlo-primary text-[11px] font-mono"></p>
+          </div>
+        </div>
+
+        <!-- Generate button -->
+        <button id="submit-btn" disabled
+                class="w-full rounded-xl py-3.5 flex items-center justify-center gap-2.5
+                       bg-oxlo-primary font-semibold text-sm"
+                style="color:#0B0D14">
+          <svg id="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          <span id="btn-text">Generate Code</span>
+          <span id="btn-spinner" class="spinner hidden" role="status" aria-label="Generating"></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Multi-stage progress (hidden until generating) -->
+    <section id="progress-section" class="hidden animate-slide-up" aria-live="polite">
+      <div class="rounded-2xl border border-white/[0.05] p-5 flex flex-col gap-4"
+           style="background:#181C28">
+        <p class="text-xs font-medium text-oxlo-muted uppercase tracking-widest">Pipeline Status</p>
+
+        <div class="flex flex-col gap-3" id="stage-list">
+          <!-- Stage 1 -->
+          <div class="flex items-center gap-3" id="stage-1">
+            <div class="w-5 h-5 rounded-full border border-white/[0.10] flex items-center justify-center shrink-0"
+                 id="stage-1-icon">
+              <div class="w-2 h-2 rounded-full bg-white/20"></div>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm text-white/70" id="stage-1-label">Extracting Design Tokens</p>
+              <div class="mt-1.5 h-[2px] w-full bg-white/[0.06] rounded-full overflow-hidden">
+                <div class="stage-fill h-full bg-oxlo-primary/60 rounded-full" id="stage-1-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage 2 -->
+          <div class="flex items-center gap-3" id="stage-2">
+            <div class="w-5 h-5 rounded-full border border-white/[0.10] flex items-center justify-center shrink-0"
+                 id="stage-2-icon">
+              <div class="w-2 h-2 rounded-full bg-white/20"></div>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm text-white/70" id="stage-2-label">Generating Component Structure</p>
+              <div class="mt-1.5 h-[2px] w-full bg-white/[0.06] rounded-full overflow-hidden">
+                <div class="stage-fill h-full bg-oxlo-primary/60 rounded-full" id="stage-2-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage 3 -->
+          <div class="flex items-center gap-3" id="stage-3">
+            <div class="w-5 h-5 rounded-full border border-white/[0.10] flex items-center justify-center shrink-0"
+                 id="stage-3-icon">
+              <div class="w-2 h-2 rounded-full bg-white/20"></div>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm text-white/70" id="stage-3-label">Running Visual Diff and Self-Correcting</p>
+              <div class="mt-1.5 h-[2px] w-full bg-white/[0.06] rounded-full overflow-hidden">
+                <div class="stage-fill h-full bg-oxlo-primary/60 rounded-full" id="stage-3-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Result card (hidden until response) -->
+    <section id="result-section" class="hidden animate-slide-up">
+
+      <!-- Accuracy badge -->
+      <div class="flex items-center gap-3 mb-4">
+        <div id="accuracy-badge"
+             class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full
+                    border border-oxlo-primary/30 bg-oxlo-primary/10 text-oxlo-primary text-xs font-semibold">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          Pixel Match: <span id="accuracy-value">—</span>
+        </div>
+        <p class="text-oxlo-muted text-xs">Based on visual diff analysis</p>
+      </div>
+
+      <!-- Result Viewer -->
+      <div class="rounded-2xl border border-white/[0.05]" style="background:#181C28">
+
+        <!-- Panel header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-3.5 border-b border-white/[0.05] gap-3">
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+              <div class="w-1.5 h-1.5 rounded-full bg-oxlo-primary animate-pulse" aria-hidden="true"></div>
+              <span class="text-white text-sm font-medium">Result</span>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="flex items-center p-1 bg-white/[0.03] rounded-lg border border-white/[0.05]">
+              <button id="tab-preview" class="px-3 py-1.5 text-xs font-medium rounded-md bg-white/[0.08] text-white transition-colors">Preview</button>
+              <button id="tab-code" class="px-3 py-1.5 text-xs font-medium rounded-md text-oxlo-muted hover:text-white transition-colors">Code</button>
+            </div>
+          </div>
+
+          <button id="copy-btn"
+                  aria-label="Copy generated code to clipboard"
+                  class="flex items-center justify-center gap-1.5 text-[11px] font-medium text-oxlo-muted
+                         border border-white/[0.08] rounded-lg px-3 py-1.5 focus:outline-none">
+            <svg id="copy-icon" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span id="copy-text">Copy Code</span>
+          </button>
+        </div>
+
+        <!-- Preview Container -->
+        <div id="preview-container" class="p-4 bg-white/5 mx-2 my-2 rounded-xl border border-white/[0.05]">
+          <iframe id="preview-frame" class="w-full h-[600px] bg-white rounded-xl border-0 shadow-inner"></iframe>
+        </div>
+
+        <!-- Code block (hidden by default) -->
+        <div id="code-container" class="hidden overflow-auto max-h-[632px] p-5">
+          <pre id="code-block" class="text-oxlo-primary whitespace-pre-wrap break-words"><code id="code-output"></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Error banner -->
+    <div id="error-banner"
+         class="hidden rounded-xl bg-red-500/10 border border-red-400/25 px-5 py-4
+                text-red-400 text-sm flex items-start gap-3"
+         role="alert">
+      <svg class="mt-0.5 shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+           aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <p id="error-message"></p>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-white/[0.05] py-4 px-6 text-center text-oxlo-muted text-[11px]">
+    Built by <strong class="text-white font-medium">ArunMadhavan EVR</strong>
+    &nbsp;&middot;&nbsp;
+    Part of the <a href="https://oxlo.ai" target="_blank" rel="noopener"
+                   class="text-oxlo-primary hover:underline">Oxlo</a> ecosystem
+  </footer>
+
+  <!-- JAVASCRIPT -->
+  <script>
+    'use strict';
+
+    // DOM references
+    const dropZone        = document.getElementById('drop-zone');
+    const fileInput       = document.getElementById('file-input');
+    const submitBtn       = document.getElementById('submit-btn');
+    const btnText         = document.getElementById('btn-text');
+    const btnSpinner      = document.getElementById('btn-spinner');
+    const btnIcon         = document.getElementById('btn-icon');
+    const previewWrapper  = document.getElementById('preview-wrapper');
+    const previewImg      = document.getElementById('preview-img');
+    const fileNameEl      = document.getElementById('file-name');
+    const progressSection = document.getElementById('progress-section');
+    const resultSection   = document.getElementById('result-section');
+    const codeOutput      = document.getElementById('code-output');
+    const accuracyValue   = document.getElementById('accuracy-value');
+    const copyBtn         = document.getElementById('copy-btn');
+    const copyText        = document.getElementById('copy-text');
+    const copyIcon        = document.getElementById('copy-icon');
+    const errorBanner     = document.getElementById('error-banner');
+    const errorMessage    = document.getElementById('error-message');
+
+    // Tab & Content references
+    const tabPreview       = document.getElementById('tab-preview');
+    const tabCode          = document.getElementById('tab-code');
+    const previewContainer = document.getElementById('preview-container');
+    const codeContainer    = document.getElementById('code-container');
+    const previewFrame     = document.getElementById('preview-frame');
+
+    let selectedFile = null;
+
+    // Tab switching logic
+    tabPreview.addEventListener('click', () => {
+      tabPreview.classList.add('bg-white/[0.08]', 'text-white');
+      tabPreview.classList.remove('text-oxlo-muted');
+      tabCode.classList.remove('bg-white/[0.08]', 'text-white');
+      tabCode.classList.add('text-oxlo-muted');
+      
+      previewContainer.classList.remove('hidden');
+      codeContainer.classList.add('hidden');
+    });
+
+    tabCode.addEventListener('click', () => {
+      tabCode.classList.add('bg-white/[0.08]', 'text-white');
+      tabCode.classList.remove('text-oxlo-muted');
+      tabPreview.classList.remove('bg-white/[0.08]', 'text-white');
+      tabPreview.classList.add('text-oxlo-muted');
+      
+      codeContainer.classList.remove('hidden');
+      previewContainer.classList.add('hidden');
+    });
+
+    // Stage metadata
+    const STAGES = [
+      { id: '1', label: 'Extracting Design Tokens',              durationMs: 4000 },
+      { id: '2', label: 'Generating Component Structure',        durationMs: 7000 },
+      { id: '3', label: 'Running Visual Diff and Self-Correcting', durationMs: 5000 },
+    ];
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    function showError(msg) {
+      errorBanner.classList.remove('hidden');
+      errorMessage.textContent = msg;
+    }
+
+    function hideError() {
+      errorBanner.classList.add('hidden');
+      errorMessage.textContent = '';
+    }
+
+    function setButtonLoading(loading) {
+      submitBtn.disabled = loading || !selectedFile;
+      btnText.textContent = loading ? 'Generating Code...' : 'Generate Code';
+      btnSpinner.classList.toggle('hidden', !loading);
+      btnIcon.classList.toggle('hidden', loading);
+    }
+
+    function handleFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        showError('Select a valid image file (PNG, JPG, or WEBP).');
+        return;
+      }
+      hideError();
+      selectedFile = file;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        previewWrapper.classList.remove('hidden');
+        previewWrapper.classList.add('flex');
+      };
+      reader.readAsDataURL(file);
+
+      fileNameEl.textContent = file.name;
+      submitBtn.disabled = false;
+
+      resultSection.classList.add('hidden');
+      progressSection.classList.add('hidden');
+      codeOutput.textContent = '';
+    }
+
+    // -------------------------------------------------------------------------
+    // Multi-stage progress animation
+    // -------------------------------------------------------------------------
+
+    let stageTimers = [];
+
+    function clearStageTimers() {
+      stageTimers.forEach(clearTimeout);
+      stageTimers = [];
+    }
+
+    function resetStages() {
+      STAGES.forEach(({ id }) => {
+        const bar   = document.getElementById(`stage-${id}-bar`);
+        const label = document.getElementById(`stage-${id}-label`);
+        const icon  = document.getElementById(`stage-${id}-icon`);
+        bar.style.width = '0%';
+        label.classList.remove('text-white', 'text-oxlo-primary');
+        label.classList.add('text-white/40');
+        icon.innerHTML = '<div class="w-2 h-2 rounded-full bg-white/15"></div>';
+      });
+    }
+
+    function activateStage(id) {
+      const bar   = document.getElementById(`stage-${id}-bar`);
+      const label = document.getElementById(`stage-${id}-label`);
+      const icon  = document.getElementById(`stage-${id}-icon`);
+
+      // Animate label
+      label.classList.remove('text-white/40', 'text-oxlo-primary');
+      label.classList.add('text-white');
+
+      // Spinner icon
+      icon.innerHTML = '<div class="spinner" style="width:12px;height:12px;border-width:1.5px"></div>';
+
+      // Fill bar over duration
+      requestAnimationFrame(() => { bar.style.width = '90%'; });
+    }
+
+    function completeStage(id) {
+      const bar   = document.getElementById(`stage-${id}-bar`);
+      const label = document.getElementById(`stage-${id}-label`);
+      const icon  = document.getElementById(`stage-${id}-icon`);
+
+      bar.style.width = '100%';
+      label.classList.remove('text-white', 'text-white/40');
+      label.classList.add('text-oxlo-primary');
+      bar.style.background = '#03F7B5';
+
+      // Checkmark
+      icon.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="#03F7B5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>`;
+    }
+
+    function runProgressAnimation() {
+      clearStageTimers();
+      resetStages();
+      progressSection.classList.remove('hidden');
+
+      let offset = 0;
+      STAGES.forEach(({ id, durationMs }) => {
+        const t1 = setTimeout(() => activateStage(id), offset);
+        const t2 = setTimeout(() => completeStage(id), offset + durationMs);
+        stageTimers.push(t1, t2);
+        offset += durationMs + 300;
+      });
+    }
+
+    function stopProgressAnimation() {
+      clearStageTimers();
+      STAGES.forEach(({ id }) => completeStage(id));
+    }
+
+    // -------------------------------------------------------------------------
+    // Drag and drop
+    // -------------------------------------------------------------------------
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      handleFile(e.dataTransfer.files[0]);
+    });
+
+    dropZone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
+    });
+
+    // -------------------------------------------------------------------------
+    // Submit
+    // -------------------------------------------------------------------------
+
+    submitBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      hideError();
+      setButtonLoading(true);
+      resultSection.classList.add('hidden');
+      runProgressAnimation();
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      try {
+        const res = await fetch('/api/generate', { method: 'POST', body: formData });
+        stopProgressAnimation();
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        codeOutput.textContent = data.code || '<!-- No output returned -->';
+        previewFrame.srcdoc = data.code || '';
+        accuracyValue.textContent = data.accuracy_score || 'N/A';
+
+        // Always reset to preview tab on new generation
+        tabPreview.click();
+
+        progressSection.classList.add('hidden');
+        resultSection.classList.remove('hidden');
+        resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) {
+        stopProgressAnimation();
+        progressSection.classList.add('hidden');
+        showError(err.message || 'Request failed. Check the server logs.');
+      } finally {
+        setButtonLoading(false);
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // Copy to clipboard
+    // -------------------------------------------------------------------------
+
+    copyBtn.addEventListener('click', async () => {
+      const code = codeOutput.textContent;
+      if (!code) return;
+
+      try {
+        await navigator.clipboard.writeText(code);
+
+        copyText.textContent = 'Copied';
+        copyBtn.style.color = '#03F7B5';
+        copyBtn.style.borderColor = 'rgba(3,247,181,0.28)';
+        copyIcon.innerHTML = `
+          <polyline points="20 6 9 17 4 12" fill="none"
+                    stroke="#03F7B5" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round"/>`;
+
+        setTimeout(() => {
+          copyText.textContent = 'Copy Code';
+          copyBtn.style.color = '';
+          copyBtn.style.borderColor = '';
+          copyIcon.innerHTML = `
+            <rect x="9" y="9" width="13" height="13" rx="2" fill="none"
+                  stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                  fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>`;
+        }, 2200);
+      } catch {
+        showError('Clipboard access denied. Select and copy the code manually.');
+      }
+    });
+  </script>
+</body>
+</html>

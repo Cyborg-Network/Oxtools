@@ -1,0 +1,10 @@
+{
+  "name": "Screenshot to Code",
+  "category": "Design & UI",
+  "problem": "Converting designs to code is slow.",
+  "useCase": "Upload a UI screenshot and get Tailwind/React code instantly.",
+  "model": "Vision-Model",
+  "author": "ArunMadhavan EVR",
+  "port_number": 8000,
+  "demo_url": "http://localhost:8000"
+}
