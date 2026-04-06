@@ -1,0 +1,56 @@
+# =============================================================================
+# Oxtools docker-compose.yml Template
+# =============================================================================
+#
+# Usage:
+#   docker compose up          — build and start the container
+#   docker compose up --build  — force a rebuild before starting
+#   docker compose down        — stop and remove containers
+#
+# Instructions:
+#   - Update `ports` if your application uses a port other than 3000.
+#     Format: "host_port:container_port"
+#   - The `env_file` directive loads your local `.env` file into the container.
+#     Make sure you've created `.env` from `.env.example` before running.
+#   - Add any additional services your project needs (databases, caches, etc.)
+#     as separate entries under `services`.
+# =============================================================================
+
+version: "3.9"
+
+services:
+  app:
+    # Build the image from the Dockerfile in the current directory.
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Map the host port to the container port.
+    # Change 3000 to match your EXPOSE instruction in the Dockerfile.
+    ports:
+      - "3000:3000"
+
+    # Load environment variables from your local .env file.
+    # This file is NOT committed to the repository — create it from .env.example.
+    env_file:
+      - .env
+
+    # Restart the container if it crashes unexpectedly.
+    restart: unless-stopped
+
+  # --- Example: Add a database service ---
+  # Uncomment and configure if your project needs one.
+  #
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: ${DB_USER}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #     POSTGRES_DB: ${DB_NAME}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+
+# volumes:
+#   pg_data:

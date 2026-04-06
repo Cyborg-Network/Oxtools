@@ -1,74 +1,131 @@
-# Contributing to the Oxtools Ecosystem
+# Contributing to Oxtools
 
-Welcome to **Oxtools**, the official integration hub for the **Cyborg Network**. We are thrilled to have you build alongside us.
+Thanks for your interest in contributing. This document explains the requirements every submission must meet and the process for getting your PR merged.
 
-To maintain the security, functionality, and professional grade of this repository, all contributors—whether you are a core engineer, an intern, or a hackathon participant—must adhere to the strict engineering protocols outlined in this document. 
-
-Submissions that do not meet these baseline requirements will not pass the automated CI/CD checks and will be closed by the core maintainers pending revision.
+Read this in full before you open a Pull Request. Submissions that are missing required files will be closed with a checklist of what needs to be fixed.
 
 ---
 
-## 🏗️ Phase 1: The Monorepo Architecture
+## 1. Folder structure
 
-Oxtools operates as a monorepo. This means multiple independent applications live within this single repository.
+Oxtools is a monorepo. Every project lives in its own isolated directory under `projects/`.
 
-1. **Isolation:** Your entire project—including all source code, assets, and documentation—must be contained within a single, newly created directory inside the `projects/` folder.
-2. **Naming:** Name your directory clearly based on its function (e.g., `projects/pdf-summarizer/` or `projects/defi-agent/`).
+```
+Oxtools/
+└── projects/
+    └── your-project-name/
+        ├── src/                  # Your application source code
+        ├── Dockerfile            # Required
+        ├── docker-compose.yml    # Required
+        ├── oxlo-manifest.json    # Required
+        ├── .env.example          # Required
+        └── README.md             # Required
+```
 
-**❌ Incorrect:** Placing your files directly in the root of the repository.
-**✅ Correct:** `Oxtools/projects/[your-project-name]/src/...`
+**Rules:**
+- One project per directory — do not nest multiple tools in the same folder.
+- Name your directory after what the tool does, not after yourself (e.g., `pdf-summarizer`, not `johns-cool-bot`).
+- Do not place any project files in the root of the repository.
 
----
-
-## 🛡️ Phase 2: Mandatory Engineering Standards
-
-Before you even open a Pull Request, your project directory must contain the following components:
-
-### 1. Zero-Trust Security Protocol
-Under no circumstances should API keys, private keys, or wallet seed phrases be committed to this repository.
-* You **must** utilize environment variables for all sensitive data.
-* You **must** include a `.env.example` file in your project directory that lists the required variables with blank values (e.g., `OXLO_API_KEY=`).
-* Ensure `.env` is securely listed in your project's `.gitignore` file.
-
-### 2. Project-Level Documentation
-Your project folder must contain its own dedicated `README.md`. It must clearly explain:
-* **Overview:** A 2-3 sentence summary of what the tool does and how it utilizes the Oxlo API.
-* **Prerequisites:** Any required software (e.g., Node v18, Python 3.10).
-* **Local Setup:** Exact, copy-pasteable terminal commands to install dependencies, set environment variables, and run the application locally.
-
-### 3. Reproducibility & Dependencies
-Core maintainers must be able to run your project locally to verify it. You must include strict dependency tracking files:
-* **Node.js:** `package.json` (and `package-lock.json` or `yarn.lock`)
-* **Python:** `requirements.txt` or `Pipfile`
-* **Rust:** `Cargo.toml` and `Cargo.lock`
+The fastest way to get started is to copy `projects/template-project/` and rename it.
 
 ---
 
-## 🚀 Phase 3: The Submission Pipeline
+## 2. Required files
 
-We operate on a strict **Fork & Pull Request** model. Direct pushes to the `main` branch are restricted.
+Every submission must include the following five files. PRs missing any of them will not be reviewed.
 
-### Step-by-Step Submission Workflow:
-1. **Fork:** Click the "Fork" button in the top right of the `Oxtools` repository to create a copy under your personal GitHub account.
-2. **Clone:** Clone your fork to your local machine.
-3. **Branch:** Create a new branch for your feature. Use standard naming conventions:
-   * `git checkout -b feat/your-project-name`
-4. **Develop:** Build your application inside the `projects/` directory according to the standards above.
-5. **Commit:** Write clean, descriptive commit messages.
-6. **Push:** Push the branch to your personal fork on GitHub.
-7. **Pull Request:** Open a PR against the `main` branch of the official `Cyborg-Network/Oxtools` repository.
+### `Dockerfile`
+
+Your project must be containerized. The `Dockerfile` must produce a working image — maintainers will run `docker build` as part of the review.
+
+Use `projects/template-project/Dockerfile` as your starting point. Comment your `Dockerfile` to explain any non-obvious setup steps.
+
+### `docker-compose.yml`
+
+Include a `docker-compose.yml` so reviewers can run your tool with a single command (`docker compose up`). Mount the `.env` file and map the appropriate port.
+
+### `oxlo-manifest.json`
+
+This file holds metadata about your tool. Copy the schema from `projects/template-project/oxlo-manifest.json` and fill it in:
+
+```json
+{
+  "name": "your-tool-name",
+  "description": "One sentence describing what this tool does.",
+  "author": "your-github-handle",
+  "tech_stack": ["python", "fastapi"],
+  "port_number": 8000,
+  "oxlo_api_used": true
+}
+```
+
+All fields are required. `tech_stack` is an array — list the language and any major frameworks.
+
+### `.env.example`
+
+List every environment variable your project needs, with empty values. This file is committed to the repo so other developers know what to configure.
+
+```bash
+OXLO_API_KEY=
+PORT=8000
+```
+
+Your actual `.env` file must never be committed. Verify that `.env` is in your project's `.gitignore` (or the root `.gitignore` already covers it).
+
+### `README.md`
+
+Write a project-level `README.md` inside your project directory. It must cover:
+
+1. **What it does** — a plain 2–3 sentence description of the tool and how it uses the Oxlo API.
+2. **Prerequisites** — any software a developer needs before running the tool locally.
+3. **Local setup** — exact, copy-pasteable commands (clone, configure `.env`, run with Docker).
+4. **Demo** — a link to a Loom or YouTube recording of the tool working.
 
 ---
 
-## 🔎 Phase 4: The Audit Process
+## 3. Security rules
 
-When you open a Pull Request, you will be prompted to fill out a mandatory W3F-style checklist. **You must provide a link to a live demo or a screen recording (Loom/YouTube) of your prototype in action.**
+**No hardcoded API keys or secrets — ever.**
 
-A Cyborg Network core engineer will audit your submission. We evaluate based on:
-1. **Oxlo API Integration:** Is the API utilized securely and efficiently?
-2. **Code Quality:** Is the codebase modular, legible, and properly formatted?
-3. **Execution:** Does the code run perfectly following your exact `README.md` instructions?
+- Use environment variables for all credentials.
+- Check your diff before pushing. Tools like `git diff --stat` and `git grep -i "api_key"` can catch accidental leaks.
+- If you realize you have committed a secret, rotate the key immediately and rewrite the Git history before opening a PR.
 
-If your PR requires changes, a maintainer will leave comments. Address them, push the fixes to your branch, and the PR will automatically update. 
+Submissions with hardcoded secrets will be closed without review.
 
-Once your code passes the audit, it will be merged, and you will officially become an Oxtools Ecosystem contributor!
+---
+
+## 4. Submission process
+
+We use a standard Fork & Pull Request workflow. Direct pushes to `main` are not permitted.
+
+```
+1. Fork the Cyborg-Network/Oxtools repository on GitHub.
+2. Clone your fork locally.
+3. Create a feature branch:
+      git checkout -b feat/your-project-name
+4. Build your project inside projects/your-project-name/.
+5. Commit with a clear message:
+      git commit -m "feat: add pdf-summarizer tool"
+6. Push to your fork:
+      git push origin feat/your-project-name
+7. Open a Pull Request against main on Cyborg-Network/Oxtools.
+```
+
+---
+
+## 5. Review process
+
+When you open a PR, GitHub will automatically load the Pull Request template. Fill it out completely — including a demo link.
+
+A maintainer will review your submission and check:
+
+1. **Does it build?** — `docker build` and `docker compose up` must succeed.
+2. **Does the Oxlo API integration work?** — The tool must demonstrably call the API.
+3. **Are there any secrets in the diff?** — Automated and manual checks both run.
+4. **Is the README accurate?** — The setup instructions will be followed exactly.
+
+If changes are needed, the reviewer will leave comments on the PR. Push fixes to the same branch and the PR will update automatically.
+
+Once the review is clear, your PR will be merged and your tool becomes part of the Oxtools ecosystem.

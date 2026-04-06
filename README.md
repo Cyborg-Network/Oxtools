@@ -13,32 +13,58 @@
 
 ---
 
-Welcome to **Oxtools**, the official open-source developer hub and repository for AI applications built on the **[Oxlo.ai](https://oxlo.ai)** infrastructure.
+**Oxtools** is the official community hub for open-source tools built on the [Oxlo.ai](https://oxlo.ai) API. If you've built something with Oxlo — an agent, a workflow, a utility — this is the right place to share it.
 
-**Oxlo.ai** is a developer-first AI inference platform designed to help engineers build AI faster with radically lower compute costs. This repository serves as a centralized, high-fidelity ecosystem for community-built AI prototypes, intelligent agents, and infrastructure tooling powered exclusively by the **Oxlo API**.
+[Oxlo.ai](https://oxlo.ai) is a developer-first AI inference platform. It gives engineers access to large language models at meaningfully lower compute costs than mainstream alternatives.
 
-## 🧠 What is Oxtools?
+## What lives here?
 
-Oxtools is a curated collection of production-ready, open-source AI applications. Our objective is to showcase secure, robust, and highly functional integrations submitted by our global network of AI builders, engineers, and hackathon participants. 
+Every project in this repo is an independent, runnable tool submitted by a developer in the Oxlo community. Projects are organized under the `projects/` directory and are expected to work out of the box using Docker.
 
-Projects within this ecosystem typically include:
-* **AI Agents & Assistants:** Autonomous tools leveraging large language models (LLMs) via Oxlo inference.
-* **Data Processing Workflows:** Applications like PDF summarizers, document parsers, and intelligent data extractors.
-* **Developer Infrastructure:** Boilerplates, wrappers, and middleware designed to accelerate Oxlo API adoption.
+Common project types include:
 
-## 🏛️ Repository Architecture
+- **Agents & Assistants** — tools that use LLMs to handle tasks autonomously
+- **Data pipelines** — PDF parsers, document extractors, summarizers
+- **Developer utilities** — API wrappers, boilerplates, middleware
 
-To maintain modularity and high operational standards, Oxtools is structured as a monorepo. Every approved AI integration operates as an independent, isolated application housed within the `projects/` directory.
+## Repository layout
 
-```text
+```
 Oxtools/
-├── .github/                  # CI/CD and repository governance templates
-├── assets/                   # Official branding and repository imagery
-├── docs/                     # Ecosystem documentation and Oxlo API references
-├── projects/                 # The core directory for all approved AI integrations
-│   ├── [project-name]/       # Isolated project environment
+├── .github/                  # PR templates and repo governance
+├── assets/                   # Logos and banners
+├── docs/                     # API references and additional documentation
+├── projects/                 # All community-submitted tools live here
+│   ├── template-project/     # Start here — copy this for your submission
 │   │   ├── src/
-│   │   ├── .env.example      # Mandatory environment template
-│   │   ├── README.md         # Mandatory project-specific documentation
-│   │   └── package.json      # Dependency management
-└── CONTRIBUTING.md           # Engineering standards and submission pipeline
+│   │   ├── Dockerfile
+│   │   ├── docker-compose.yml
+│   │   ├── oxlo-manifest.json
+│   │   ├── .env.example
+│   │   └── README.md
+│   └── [your-project-name]/
+└── CONTRIBUTING.md           # Rules, structure requirements, and PR process
+```
+
+## Getting started as a contributor
+
+1. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) — it covers the rules, required files, and the PR process.
+2. Copy `projects/template-project/` into a new folder under `projects/`.
+3. Build your tool. Fill in the `oxlo-manifest.json` and write your own `README.md`.
+4. Open a Pull Request against `main`.
+
+There are no language or framework restrictions. Python, Node.js, Go, Rust — anything works, as long as it runs inside Docker and uses the Oxlo API.
+
+## Standards at a glance
+
+| Requirement | Details |
+|---|---|
+| Location | Your project must live in `projects/[your-project-name]/` |
+| Docker | Must include a working `Dockerfile` and `docker-compose.yml` |
+| Manifest | Must include `oxlo-manifest.json` |
+| Secrets | No hardcoded API keys — use `.env.example` |
+| Docs | Must include a `README.md` with local setup instructions |
+
+## License
+
+[Apache 2.0](./LICENSE)

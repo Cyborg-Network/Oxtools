@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+
+# Environment files — NEVER commit real credentials
+.env
+**/.env
+*.env.local
+**/*.env.local
+
+# Dependency directories
+node_modules/
+**/node_modules/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+**/.venv/
+venv/
+**/venv/
+target/                  # Rust build output
+**/target/
+
+# Build output
+dist/
+**/dist/
+build/
+**/build/
+.next/
+**/.next/
+out/
+**/out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Editor and OS artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+
+# Docker
+.docker/
