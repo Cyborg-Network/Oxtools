@@ -1,0 +1,12 @@
+{
+  "name": "template-project",
+  "description": "Replace this with a one-sentence description of what your tool does.",
+  "author": "your-github-handle",
+  "tech_stack": ["nodejs"],
+  "port_number": 3000,
+  "oxlo_api_used": true,
+  "oxlo_api_endpoint": "https://api.oxlo.ai/v1/chat/completions",
+  "repository_url": "https://github.com/Cyborg-Network/Oxtools/tree/main/projects/template-project",
+  "demo_url": "",
+  "version": "1.0.0"
+}

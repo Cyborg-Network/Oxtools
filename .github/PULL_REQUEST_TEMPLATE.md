@@ -1,29 +1,47 @@
-## 📝 Oxtools Integration Submission
+## Oxtools Submission
 
-**Project Name:** [Insert Project Name]
-**Contributor(s):** [@your-github-handle]
-
-### 🌐 Project Overview
-### 🔗 Demonstration
-**Demo Link:** [Insert Link Here]
+**Project name:** [Your project name]
+**Contributor:** [@your-github-handle]
+**Demo:** [Link to Loom or YouTube recording — required]
 
 ---
 
-### 🛡️ Pre-Flight Security & Architecture Checklist
-*By submitting this Pull Request, I formally confirm that I have verified the following:*
+### What does this tool do?
 
-- [ ] **Directory Isolation:** My entire project is self-contained within a new directory inside the `projects/` folder.
-- [ ] **Oxlo API Integration:** My application functionally relies on the Oxlo API.
-- [ ] **Documentation:** I have written a clear, step-by-step `README.md` inside my project directory so reviewers can run it locally.
-- [ ] **Zero Secrets:** I have **not** hardcoded any API keys or private data. 
-- [ ] **Environment Template:** I have included a `.env.example` file for necessary environment variables.
-- [ ] **Dependency Lock:** I have included strict dependency tracking files (e.g., `package.json`, `requirements.txt`).
-- [ ] **Code Quality:** My code is properly formatted, commented, and free of unnecessary console logs or unused variables.
+Write 2–3 sentences describing the tool, the problem it solves, and how it uses the Oxlo API.
 
 ---
 
-### 🛑 For Core Maintainers Only
-- [ ] Security Audit Passed (No leaked secrets)
-- [ ] Local Environment Build Successful
-- [ ] Oxlo API implementation verified
-- [ ] Approved for Merge
+### Submission checklist
+
+*Check every box before requesting a review. Unchecked items will result in the PR being sent back.*
+
+**Structure**
+- [ ] My project is in its own directory under `projects/[my-project-name]/`
+- [ ] I have not placed any files directly in the repository root
+
+**Required files**
+- [ ] `Dockerfile` is present and `docker build .` succeeds
+- [ ] `docker-compose.yml` is present and `docker compose up` starts the app
+- [ ] `oxlo-manifest.json` is present and all fields are filled in
+- [ ] `.env.example` lists every environment variable the project needs (with empty values)
+- [ ] `README.md` is present with setup instructions a reviewer can follow exactly
+
+**Security**
+- [ ] No API keys, private keys, or secrets are hardcoded anywhere in the codebase
+- [ ] My actual `.env` file is not included in this PR
+- [ ] I have verified my diff with `git grep -i "api_key"` and found no leaks
+
+**Oxlo API**
+- [ ] The tool makes at least one functional call to the Oxlo API
+- [ ] The API key is read from the `OXLO_API_KEY` environment variable
+
+---
+
+### For maintainers
+
+- [ ] Security scan passed — no secrets in diff
+- [ ] `docker build .` succeeded locally
+- [ ] `docker compose up` ran successfully and app is reachable
+- [ ] Oxlo API integration verified
+- [ ] Approved for merge
