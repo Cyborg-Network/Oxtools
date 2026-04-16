@@ -1,0 +1,4 @@
+# Requirements for: Screenshot to Code
+openai>=1.68.2,<2.0.0
+Pillow==10.4.0
+playwright==1.44.0

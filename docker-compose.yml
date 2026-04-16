@@ -1,0 +1,38 @@
+# Oxtools — Production Docker Compose
+# =====================================
+# Runs the Next.js UI and the unified Python tool runner.
+#
+# Usage:
+#   docker compose up --build
+
+services:
+  # ─── Tier 1: Next.js App (UI + LLM tools) ──────────────────────────
+  oxtools-app:
+    build: ./app
+    ports:
+      - "3001:3000"
+    environment:
+      - OXLO_API_KEY=${OXLO_API_KEY}
+      - TOOL_RUNNER_URL=http://python-tools:9080
+    depends_on:
+      - python-tools
+    networks:
+      - oxtools-net
+
+  # ─── Tier 2: Unified Python Tool Runner ─────────────────────────────
+  # ONE container runs ALL Python tools.
+  # Auto-discovers tools from services/python-tools/tools/*/tool.py
+  python-tools:
+    build: ./services/python-tools
+    ports:
+      - "9080:9080"
+    environment:
+      - OXLO_API_KEY=${OXLO_API_KEY}
+      - OXLO_BASE_URL=https://api.oxlo.ai/v1
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    networks:
+      - oxtools-net
+
+networks:
+  oxtools-net:
+    driver: bridge
