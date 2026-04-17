@@ -1,7 +1,11 @@
 # GitHub Actions - Lint, test, and deploy the Next.js app (Tier 1)
 #
-# Vercel handles the actual deployment automatically on push.
-# This workflow runs lint/type checks as a CI gate.
+# Vercel handles deployment automatically via its GitHub integration.
+# This workflow runs lint/type checks as a CI quality gate.
+#
+# Branch strategy:
+#   dev  (default) -> tools.dev.oxlo.ai (testing)
+#   main           -> tools.oxlo.ai (production)
 
 name: CI - Tier 1 (Next.js)
 
@@ -11,7 +15,7 @@ on:
     paths:
       - "app/**"
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - "app/**"
 
@@ -60,5 +64,7 @@ jobs:
         env:
           OXLO_API_KEY: ${{ secrets.OXLO_API_KEY }}
 
-      # Vercel picks up the build automatically on push to main.
+      # Vercel auto-deploys on push via its GitHub integration:
+      #   - Push to dev  -> tools.dev.oxlo.ai
+      #   - Push to main -> tools.oxlo.ai (production)
       # No explicit deploy step needed here.

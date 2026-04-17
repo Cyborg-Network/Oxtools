@@ -1,14 +1,14 @@
 "use client";
 
 import { Button, Label, Textarea } from "@ansospace/ui";
-import { ArrowUpRight, Lock, Play } from "lucide-react";
+import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useState } from "react";
-
+import { useCallback, useEffect, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
 import { useToolExecution } from "@/hooks/use-tool-execution";
+import { getPlanDisplayName } from "@/lib/auth";
 import { getToolIcon } from "@/lib/icons";
 import { getToolById } from "@/lib/tools/registry";
 import { useAuth } from "@/providers/auth-provider";
@@ -67,10 +67,21 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 
 	const { canExecute, getToolUsage, trackExecution, redirectToUpgrade } = useAuth();
 	const toolUsage = getToolUsage(tool.id);
+	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+
+	// Show popup when limit is newly reached
+	useEffect(() => {
+		if (toolUsage.limitReached) {
+			setShowUpgradeDialog(true);
+		}
+	}, [toolUsage.limitReached]);
 
 	const handleExecute = () => {
 		// Check per-tool usage limit
-		if (!canExecute(tool.id)) return;
+		if (!canExecute(tool.id)) {
+			setShowUpgradeDialog(true);
+			return;
+		}
 		// Check required fields
 		for (const field of tool.requiredFields) {
 			if (!fields[field]?.trim()) return;
@@ -84,101 +95,182 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
 
 	return (
-		<ToolLayout
-			title={tool.name}
-			description={tool.description}
-			icon={getToolIcon(tool.icon, "h-6 w-6")}
-			onRestore={handleRestore}
-		>
-			<div className="space-y-6">
-				{/* Render input fields from tool definition */}
-				{tool.inputs.map((input) => (
-					<InputField
-						key={input.key}
-						config={input}
-						value={fields[input.key] || ""}
-						onChange={(value) => setField(input.key, value)}
-					/>
-				))}
+		<>
+			<ToolLayout
+				title={tool.name}
+				description={tool.description}
+				icon={getToolIcon(tool.icon, "h-6 w-6")}
+				onRestore={handleRestore}
+			>
+				<div className="space-y-6">
+					{/* Render input fields from tool definition */}
+					{tool.inputs.map((input) => (
+						<InputField
+							key={input.key}
+							config={input}
+							value={fields[input.key] || ""}
+							onChange={(value) => setField(input.key, value)}
+						/>
+					))}
 
-				{/* Execute button + Usage counter */}
-				<div className="flex items-center gap-4 flex-wrap">
-					{toolUsage.limitReached ? (
-						<div className="space-y-2">
-							<Button
-								onClick={redirectToUpgrade}
-								variant="outline"
-								className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
-							>
-								<Lock className="h-4 w-4" />
-								Limit reached for this tool ({toolUsage.used}/{toolUsage.limit})
-							</Button>
-							<p className="text-xs text-muted-foreground">
-								Upgrade your plan for more daily executions.{" "}
-								<button
+					{/* Execute button + Usage counter */}
+					<div className="flex items-center gap-4 flex-wrap">
+						{toolUsage.limitReached ? (
+							<div className="space-y-2">
+								<Button
 									onClick={redirectToUpgrade}
-									className="text-primary hover:underline underline-offset-2"
+									variant="outline"
+									className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
 								>
-									View plans <ArrowUpRight className="inline h-3 w-3" />
-								</button>
-							</p>
+									<Lock className="h-4 w-4" />
+									Limit reached for this tool ({toolUsage.used}/{toolUsage.limit})
+								</Button>
+								<p className="text-xs text-muted-foreground">
+									Upgrade your plan for more daily executions.{" "}
+									<button
+										onClick={redirectToUpgrade}
+										className="text-primary hover:underline underline-offset-2"
+									>
+										View plans <ArrowUpRight className="inline h-3 w-3" />
+									</button>
+								</p>
+							</div>
+						) : (
+							<Button onClick={handleExecute} disabled={!isReady || isLoading} className="gap-2">
+								<Play className="h-4 w-4" />
+								{isLoading ? "Processing..." : `Run ${tool.name}`}
+							</Button>
+						)}
+
+						{/* Usage indicator pill - per tool */}
+						<div className="flex items-center gap-2">
+							<div
+								className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+									toolUsage.limitReached
+										? "bg-destructive/10 text-destructive"
+										: toolUsage.remaining <= 2
+											? "bg-amber-500/10 text-amber-500"
+											: "bg-primary/10 text-primary"
+								}`}
+							>
+								<span
+									className={`h-1.5 w-1.5 rounded-full ${
+										toolUsage.limitReached
+											? "bg-destructive"
+											: toolUsage.remaining <= 2
+												? "bg-amber-500"
+												: "bg-primary"
+									}`}
+								/>
+								{toolUsage.used}/{toolUsage.limit} uses today
+							</div>
+							<span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+								{toolUsage.plan}
+							</span>
 						</div>
-					) : (
-						<Button onClick={handleExecute} disabled={!isReady || isLoading} className="gap-2">
-							<Play className="h-4 w-4" />
-							{isLoading ? "Processing..." : `Run ${tool.name}`}
-						</Button>
+					</div>
+
+					{/* Low usage warning */}
+					{!toolUsage.limitReached && toolUsage.remaining <= 2 && toolUsage.remaining > 0 && (
+						<p className="text-xs text-amber-500">
+							⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for this
+							tool today.{" "}
+							<button
+								onClick={redirectToUpgrade}
+								className="underline underline-offset-2 hover:text-amber-400"
+							>
+								Upgrade for more
+							</button>
+						</p>
 					)}
 
-					{/* Usage indicator pill - per tool */}
-					<div className="flex items-center gap-2">
-						<div
-							className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-								toolUsage.limitReached
-									? "bg-destructive/10 text-destructive"
-									: toolUsage.remaining <= 2
-										? "bg-amber-500/10 text-amber-500"
-										: "bg-primary/10 text-primary"
-							}`}
-						>
-							<span
-								className={`h-1.5 w-1.5 rounded-full ${
-									toolUsage.limitReached
-										? "bg-destructive"
-										: toolUsage.remaining <= 2
-											? "bg-amber-500"
-											: "bg-primary"
-								}`}
-							/>
-							{toolUsage.used}/{toolUsage.limit} uses today
-						</div>
-						<span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-							{toolUsage.plan}
-						</span>
+					{/* Results */}
+					<div className="space-y-2">
+						<Label>Result</Label>
+						<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
 					</div>
 				</div>
+			</ToolLayout>
 
-				{/* Low usage warning */}
-				{!toolUsage.limitReached && toolUsage.remaining <= 2 && toolUsage.remaining > 0 && (
-					<p className="text-xs text-amber-500">
-						⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for this
-						tool today.{" "}
+			{/* ─── Upgrade Dialog Popup ──────────────────────────── */}
+			{showUpgradeDialog && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+					<div className="relative mx-4 w-full max-w-md rounded-2xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+						{/* Close button */}
 						<button
-							onClick={redirectToUpgrade}
-							className="underline underline-offset-2 hover:text-amber-400"
+							onClick={() => setShowUpgradeDialog(false)}
+							className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 						>
-							Upgrade for more
+							<X className="h-4 w-4" />
 						</button>
-					</p>
-				)}
 
-				{/* Results */}
-				<div className="space-y-2">
-					<Label>Result</Label>
-					<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						{/* Icon */}
+						<div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20">
+							<Crown className="h-7 w-7 text-amber-500" />
+						</div>
+
+						{/* Title */}
+						<h3 className="text-center text-lg font-semibold">Daily Limit Reached</h3>
+						<p className="mt-1 text-center text-sm text-muted-foreground">
+							You&apos;ve used all <strong>{toolUsage.limit}</strong> executions for{" "}
+							<strong>{tool.name}</strong> today on the{" "}
+							<span className="font-medium text-foreground">
+								{getPlanDisplayName(toolUsage.plan)}
+							</span>{" "}
+							plan.
+						</p>
+
+						{/* Tier comparison */}
+						<div className="mt-5 space-y-2 rounded-xl bg-muted/50 p-4 text-sm">
+							<div className="flex items-center justify-between">
+								<span className="text-muted-foreground">Free</span>
+								<span className={toolUsage.plan === "free" ? "font-bold text-foreground" : ""}>
+									5 / tool / day {toolUsage.plan === "free" && "(current)"}
+								</span>
+							</div>
+							<div className="flex items-center justify-between">
+								<span className="text-muted-foreground">Pro</span>
+								<span
+									className={
+										toolUsage.plan === "pro" ? "font-bold text-foreground" : "text-primary"
+									}
+								>
+									20 / tool / day {toolUsage.plan === "pro" && "(current)"}
+								</span>
+							</div>
+							<div className="flex items-center justify-between">
+								<span className="text-muted-foreground">Premium</span>
+								<span
+									className={
+										toolUsage.plan === "premium" ? "font-bold text-foreground" : "text-primary"
+									}
+								>
+									100 / tool / day {toolUsage.plan === "premium" && "(current)"}
+								</span>
+							</div>
+						</div>
+
+						{/* CTA */}
+						<div className="mt-5 flex gap-3">
+							<Button
+								variant="outline"
+								className="flex-1"
+								onClick={() => setShowUpgradeDialog(false)}
+							>
+								Maybe Later
+							</Button>
+							<Button
+								className="flex-1 gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600"
+								onClick={redirectToUpgrade}
+							>
+								Upgrade Now
+								<ArrowUpRight className="h-4 w-4" />
+							</Button>
+						</div>
+					</div>
 				</div>
-			</div>
-		</ToolLayout>
+			)}
+		</>
 	);
 }
 
