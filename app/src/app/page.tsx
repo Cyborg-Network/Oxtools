@@ -5,5 +5,5 @@ import { redirect } from "next/navigation";
  * Manager directive: no landing page, users go straight to tools.
  */
 export default function HomePage() {
-  redirect("/tools");
+	redirect("/tools");
 }
