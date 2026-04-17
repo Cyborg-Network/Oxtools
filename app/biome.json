@@ -34,17 +34,5 @@
       "semicolons": "always",
       "trailingCommas": "es5"
     }
-  },
-  "overrides": [
-    {
-      "include": ["*.tsx", "*.ts"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "noUnusedVariables": "warn"
-          }
-        }
-      }
-    }
-  ]
+  }
 }
