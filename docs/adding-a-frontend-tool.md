@@ -3,7 +3,7 @@
 ## Overview
 
 Tier 1 tools are **pure prompt-engineered LLM tools** that run entirely in the frontend.
-They don't require any custom backend — the Next.js API route sends the prompt directly
+They don't require any custom backend - the Next.js API route sends the prompt directly
 to the Oxlo API and streams the response back to the user.
 
 Most tools in Oxtools are Tier 1. If your tool is essentially "send a prompt, get text back",
@@ -83,7 +83,7 @@ cd app && npm run dev
 ```
 
 That's it! The dashboard auto-generates the form, handles streaming, persists history,
-and manages usage limits — all from your single tool definition file.
+and manages usage limits - all from your single tool definition file.
 
 ## Tool Definition Reference
 
@@ -146,11 +146,11 @@ buildSystemPrompt: () =>
 
 ## Tips for Great Tool Prompts
 
-1. **Be specific** — vague prompts produce vague results
-2. **Set boundaries** — tell the AI what NOT to include
-3. **Use the framework field** — let users choose their preferred stack
-4. **Test with multiple models** — different models handle prompts differently
-5. **Pick the right default model** — use faster models for simple tools, reasoning models for complex ones
+1. **Be specific** - vague prompts produce vague results
+2. **Set boundaries** - tell the AI what NOT to include
+3. **Use the framework field** - let users choose their preferred stack
+4. **Test with multiple models** - different models handle prompts differently
+5. **Pick the right default model** - use faster models for simple tools, reasoning models for complex ones
 
 ## Available Models (Oxlo Catalog)
 

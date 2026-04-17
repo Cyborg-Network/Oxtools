@@ -2,7 +2,7 @@
 
 ## Overview
 
-Python tools run in the **Unified Python Tool Runner** — a single Docker container
+Python tools run in the **Unified Python Tool Runner** - a single Docker container
 that auto-discovers tools from directories. Each tool gets its own directory with
 full freedom to organize files however they want.
 
@@ -43,7 +43,7 @@ Every tool needs exactly **2 things** in `tool.py`:
 ```python
 # services/python-tools/tools/my-tool/tool.py
 
-# 1. MANIFEST — describes your tool
+# 1. MANIFEST - describes your tool
 MANIFEST = {
     "id": "my-tool",                    # URL-safe ID
     "name": "My Tool Name",
@@ -52,7 +52,7 @@ MANIFEST = {
     "version": "1.0.0",
 }
 
-# 2. run() — executes your tool
+# 2. run() - executes your tool
 async def run(data: dict) -> dict:
     query = data.get("query", "")
     # Your logic here...

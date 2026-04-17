@@ -35,7 +35,7 @@ function parseOxloError(error: unknown): {
     const errorType = innerError?.error || "";
     const requiredPlan = innerError?.required_plan;
 
-    // Model access denied — wrong plan tier
+    // Model access denied - wrong plan tier
     if (errorType === "model_access_denied" || status === 403) {
       return {
         status: 403,
@@ -58,7 +58,7 @@ function parseOxloError(error: unknown): {
       };
     }
 
-    // Unauthorized — invalid API key
+    // Unauthorized - invalid API key
     if (status === 401) {
       return {
         status: 401,

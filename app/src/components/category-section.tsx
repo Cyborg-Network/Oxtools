@@ -1,13 +1,13 @@
 import { Badge } from "@ansospace/ui";
 
-import { categories } from "@/lib/tools";
-import type { Tool, ToolCategory } from "@/types";
+import { categories } from "@/lib/tools/registry";
+import type { ToolDefinition, ToolCategory } from "@/types";
 
 import { ToolCard } from "./tool-card";
 
 interface CategorySectionProps {
   category: ToolCategory;
-  tools: Tool[];
+  tools: ToolDefinition[];
 }
 
 export function CategorySection({ category, tools }: CategorySectionProps) {

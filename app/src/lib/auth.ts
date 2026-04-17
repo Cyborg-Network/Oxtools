@@ -194,7 +194,7 @@ export function getUsageStatus(planId: string): UsageStatus {
     limit,
     plan: planId || "free",
     remaining: Math.max(0, limit - totalUsed),
-    limitReached: false, // Global summary doesn't block — per-tool does
+    limitReached: false, // Global summary doesn't block - per-tool does
   };
 }
 

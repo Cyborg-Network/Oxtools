@@ -25,7 +25,7 @@ Oxtools/
 
 | Type | Where it lives | When to use |
 |---|---|---|
-| **Tier 1 (Frontend)** | `app/src/lib/tools/my-tool.ts` | Pure LLM prompt — no custom backend needed |
+| **Tier 1 (Frontend)** | `app/src/lib/tools/my-tool.ts` | Pure LLM prompt - no custom backend needed |
 | **Tier 2 (Python)** | `services/python-tools/tools/my-tool/` | Needs custom logic, libraries, or multi-step agents |
 
 ---
@@ -63,7 +63,7 @@ Detailed guides with code examples:
 
 ## 5. Security rules
 
-**No hardcoded API keys or secrets — ever.**
+**No hardcoded API keys or secrets - ever.**
 
 - Use environment variables for all credentials.
 - Check your diff before pushing: `git diff --stat` and `git grep -i "api_key"`.
@@ -84,7 +84,7 @@ We use a standard Fork & Pull Request workflow.
 3. Create a feature branch:
       git checkout -b feat/your-tool-name
 4. Add your tool following the appropriate guide (Tier 1 or Tier 2).
-5. Test locally — make sure it builds and runs.
+5. Test locally - make sure it builds and runs.
 6. Commit with a clear message:
       git commit -m "feat: add pdf-summarizer tool"
 7. Push to your fork:
@@ -111,10 +111,10 @@ Before opening your PR, verify:
 
 A maintainer will review your submission and check:
 
-1. **Does it work?** — The tool must produce correct results.
-2. **Is it well-prompted?** — System prompts should be specific and well-structured.
-3. **Are there secrets in the diff?** — Automated and manual checks both run.
-4. **Does it fit?** — The tool should be genuinely useful to developers.
+1. **Does it work?** - The tool must produce correct results.
+2. **Is it well-prompted?** - System prompts should be specific and well-structured.
+3. **Are there secrets in the diff?** - Automated and manual checks both run.
+4. **Does it fit?** - The tool should be genuinely useful to developers.
 
 If changes are needed, the reviewer will leave comments. Push fixes to the same branch.
 

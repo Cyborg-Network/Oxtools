@@ -16,10 +16,10 @@ import { useAuth } from "@/providers/auth-provider";
 import type { InputFieldConfig } from "@/types";
 
 /**
- * Dynamic tool page — renders any tool from the registry.
+ * Dynamic tool page - renders any tool from the registry.
  *
  * Contributors only need to create a ToolDefinition file in
- * src/lib/tools/<tool-id>.ts — this page handles the rest.
+ * src/lib/tools/<tool-id>.ts - this page handles the rest.
  */
 export default function DynamicToolPage() {
   const params = useParams<{ toolId: string }>();
@@ -135,7 +135,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
             </Button>
           )}
 
-          {/* Usage indicator pill — per tool */}
+          {/* Usage indicator pill - per tool */}
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
               toolUsage.limitReached
@@ -180,7 +180,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Generic input renderer — renders any InputFieldConfig
+// Generic input renderer - renders any InputFieldConfig
 // ---------------------------------------------------------------------------
 
 function InputField({

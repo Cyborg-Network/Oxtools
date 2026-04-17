@@ -21,7 +21,7 @@ export const colorPalette: ToolDefinition = {
 4. **CSS Variables** - provide a \`:root\` block with the full palette
 5. **Tailwind Config** - provide the \`colors\` section for tailwind.config.js
 
-6. **VISUAL PREVIEW** — You MUST include exactly one \`\`\`html code block at the end containing a standalone HTML page (starting with <!DOCTYPE html>) that visually showcases ONLY the color swatches.
+6. **VISUAL PREVIEW** - You MUST include exactly one \`\`\`html code block at the end containing a standalone HTML page (starting with <!DOCTYPE html>) that visually showcases ONLY the color swatches.
    - Load Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>
    - Display a grid of large rounded color cards. Each card shows the color as a filled background, plus the color name and HEX code as text overlay.
    - DO NOT recreate any application UI, navigation bar, sidebar, or tool interface. Just show the palette colors as beautiful swatch cards in a centered grid.
