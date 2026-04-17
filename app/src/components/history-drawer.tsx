@@ -23,7 +23,7 @@ import { clearToolHistory, getToolHistory, type HistoryItem } from "@/lib/histor
 import { ResultViewer } from "./result-viewer";
 
 interface HistoryDrawerProps {
-  onRestore?: (body: Record<string, string>, result: string) => void;
+  onRestore?: (body: Record<string, unknown>, result: string) => void;
 }
 
 export function HistoryDrawer({ onRestore }: HistoryDrawerProps) {

@@ -1,9 +1,9 @@
-# GitHub Actions — Lint, test, and deploy the Next.js app (Tier 1)
+# GitHub Actions - Lint, test, and deploy the Next.js app (Tier 1)
 #
 # Vercel handles the actual deployment automatically on push.
 # This workflow runs lint/type checks as a CI gate.
 
-name: CI — Tier 1 (Next.js)
+name: CI - Tier 1 (Next.js)
 
 on:
   push:

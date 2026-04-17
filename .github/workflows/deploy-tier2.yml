@@ -1,4 +1,4 @@
-# GitHub Actions — Build & Deploy the unified Python tool runner
+# GitHub Actions - Build & Deploy the unified Python tool runner
 #
 # Since ALL Python tools run in ONE container, we just rebuild
 # and redeploy that single container when any tool changes.
@@ -6,7 +6,7 @@
 # ⚠️ DISABLED: Auto-deploy is disabled until production infra is ready.
 # To deploy manually, use the "Run workflow" button in GitHub Actions.
 
-name: Deploy — Python Tool Runner
+name: Deploy - Python Tool Runner
 
 on:
   # DISABLED: Remove the comments below to enable auto-deploy on push
