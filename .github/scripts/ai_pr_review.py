@@ -1,6 +1,6 @@
 """
 Oxtools AI PR Review Agent
-Uses Kimi K2.6 via Azure Foundry (OpenAI-compatible API) to review pull requests.
+Posts inline code review comments on pull requests, similar to Cursor Bugbot.
 """
 
 import os
@@ -53,13 +53,18 @@ def get_pr_diff(repo: str, pr_number: int) -> str:
         return ""
 
 
+def get_pr_files(repo: str, pr_number: int) -> list:
+    """Get the list of changed files with their patch data."""
+    return github_api(f"/repos/{repo}/pulls/{pr_number}/files")
+
+
 def sanitize_diff(diff: str) -> str:
     """Remove potential secrets from diff before sending to LLM."""
     patterns = [
-        r'(?i)(api[_-]?key|secret|password|token|credential)\s*[=:]\s*["\']?[A-Za-z0-9+/=_\-]{8,}["\']?',
-        r'(?i)(AKIA|ABIA|ACCA|ASIA)[A-Z0-9]{16}',  # AWS keys
-        r'sk-[A-Za-z0-9]{20,}',  # OpenAI keys
-        r'ghp_[A-Za-z0-9]{36}',  # GitHub PATs
+        r'(?i)(api[_-]?key|secret|password|token|credential)\s*[=:]\s*["\'`]?[A-Za-z0-9+/=_\-]{8,}["\'`]?',
+        r'(?i)(AKIA|ABIA|ACCA|ASIA)[A-Z0-9]{16}',
+        r'sk-[A-Za-z0-9]{20,}',
+        r'ghp_[A-Za-z0-9]{36}',
     ]
     sanitized = diff
     for pattern in patterns:
@@ -67,7 +72,7 @@ def sanitize_diff(diff: str) -> str:
     return sanitized
 
 
-def truncate_diff(diff: str, max_chars: int = 60000) -> str:
+def truncate_diff(diff: str, max_chars: int = 80000) -> str:
     """Truncate diff to fit within token limits."""
     if len(diff) <= max_chars:
         return diff
@@ -80,9 +85,8 @@ def call_kimi(prompt: str, system_prompt: str) -> str:
     api_key = get_env("AZURE_AI_KEY")
 
     if not endpoint or not api_key:
-        return "⚠️ AI review unavailable: Azure AI credentials not configured."
+        return ""
 
-    # Ensure endpoint ends with /openai/v1 for OpenAI compatibility
     base_url = endpoint.rstrip("/")
     if not base_url.endswith("/openai/v1"):
         base_url = base_url + "/openai/v1"
@@ -95,7 +99,7 @@ def call_kimi(prompt: str, system_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.3,
+        "temperature": 0.2,
         "max_tokens": 16384,
     }
 
@@ -112,63 +116,132 @@ def call_kimi(prompt: str, system_prompt: str) -> str:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=180) as resp:
             result = json.loads(resp.read().decode())
             return result["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:
         error_body = e.read().decode()
-        print(f"::error::Kimi API error {e.code}: {error_body}")
-        return f"⚠️ AI review failed (HTTP {e.code}). The team will review manually."
+        print(f"::error::API error {e.code}: {error_body}")
+        return ""
     except Exception as e:
-        print(f"::error::Kimi API exception: {e}")
-        return f"⚠️ AI review failed: {e}"
+        print(f"::error::API exception: {e}")
+        return ""
 
 
-def post_review_comment(repo: str, pr_number: int, body: str) -> None:
-    """Post a comment on the PR."""
+def parse_diff_line_map(diff: str) -> dict:
+    """Parse unified diff to map file paths to their diff line positions.
+    Returns {filename: {new_line_number: diff_position}}
+    """
+    file_map = {}
+    current_file = None
+    position = 0
+    new_line = 0
+
+    for line in diff.split("\n"):
+        if line.startswith("diff --git"):
+            # Extract filename: diff --git a/path b/path
+            match = re.search(r"b/(.+)$", line)
+            if match:
+                current_file = match.group(1)
+                file_map[current_file] = {}
+                position = 0
+                new_line = 0
+        elif line.startswith("@@"):
+            # Parse hunk header: @@ -old,count +new,count @@
+            match = re.search(r"\+(\d+)", line)
+            if match:
+                new_line = int(match.group(1)) - 1
+            position += 1
+        elif current_file and position > 0:
+            position += 1
+            if line.startswith("+"):
+                new_line += 1
+                file_map[current_file][new_line] = position
+            elif line.startswith("-"):
+                pass  # Deleted lines don't get new line numbers
+            else:
+                new_line += 1
+                file_map[current_file][new_line] = position
+
+    return file_map
+
+
+def post_inline_review(repo: str, pr_number: int, commit_sha: str,
+                       summary: str, inline_comments: list) -> None:
+    """Post a proper GitHub PR review with inline comments."""
+    # Build review comments array
+    comments = []
+    for c in inline_comments:
+        comment = {
+            "path": c["path"],
+            "body": f"**{c.get('severity', 'Note')}**: {c['body']}",
+        }
+        if c.get("line"):
+            comment["line"] = c["line"]
+            comment["side"] = "RIGHT"
+        elif c.get("position"):
+            comment["position"] = c["position"]
+        else:
+            continue
+        comments.append(comment)
+
+    review_body = f"## OxBot Review\n\n{summary}"
+    if not comments:
+        review_body += "\n\n_No inline issues found._"
+
+    review_data = {
+        "commit_id": commit_sha,
+        "body": review_body,
+        "event": "COMMENT",
+        "comments": comments,
+    }
+
     github_api(
-        f"/repos/{repo}/issues/{pr_number}/comments",
+        f"/repos/{repo}/pulls/{pr_number}/reviews",
         method="POST",
-        data={"body": body},
+        data=review_data,
     )
 
 
-SYSTEM_PROMPT = """You are OxBot, the official AI code reviewer for the Oxtools open-source project.
-Oxtools is a collection of developer tools powered by the Oxlo.ai inference API.
-
-Your job is to review pull requests thoroughly and provide actionable feedback.
-You are helpful, constructive, and security-conscious.
+SYSTEM_PROMPT = """You are OxBot, the code reviewer for the Oxtools open-source project.
+You review pull requests and provide inline feedback on specific lines of code.
 
 ## Repository Structure
-- `app/` — Next.js frontend (TypeScript, React, TailwindCSS)
-- `services/python-tools/` — Python tool runner and individual tools
-- `projects/` — Community-contributed tool projects
-- `tests/` — Benchmark and test suites
-- `.github/` — CI/CD workflows and templates
+- `app/` - Next.js frontend (TypeScript, React, TailwindCSS)
+- `services/python-tools/` - Python tool runner
+- `projects/` - Community-contributed tool projects
+- `.github/` - CI/CD workflows
 
-## Review Checklist (for contributor PRs under projects/)
-1. **Structure**: Project in own directory under `projects/[name]/`
-2. **Required Files**: Dockerfile, docker-compose.yml, oxlo-manifest.json, .env.example, README.md
-3. **Security**: No hardcoded API keys, secrets, or credentials anywhere
-4. **Oxlo API**: At least one functional call using OXLO_API_KEY env var
-5. **Code Quality**: Clean code, proper error handling, no obvious bugs
+## Your Review Focus
+1. Security: No leaked secrets, no dangerous patterns (eval, exec, SQL injection)
+2. Bugs: Logic errors, edge cases, null/undefined risks
+3. Performance: Unnecessary re-renders, N+1 patterns, memory leaks
+4. Best Practices: Error handling, type safety, code duplication
 
-## Review Checklist (for all PRs)
-1. **Security**: No secrets leaked, no dangerous patterns (eval, exec without sanitization)
-2. **Logic**: Code logic is correct and handles edge cases
-3. **Performance**: No obvious performance issues (N+1 queries, memory leaks)
-4. **Style**: Follows existing code conventions
-5. **Breaking Changes**: Flag any breaking changes clearly
+## CRITICAL: Output Format
+You MUST respond with valid JSON only. No markdown, no explanation outside JSON.
 
-## Output Format
-Structure your review as:
-1. **Summary** — What does this PR do? (2-3 sentences)
-2. **Security** — Any security concerns? (✅ or ⚠️ with details)
-3. **Code Quality** — Logic issues, bugs, or improvements
-4. **Suggestions** — Specific actionable improvements (with file:line references)
-5. **Verdict** — One of: ✅ LGTM, ⚠️ NEEDS CHANGES, 🚨 CRITICAL ISSUES
+{
+  "summary": "2-3 sentence overall summary of the PR",
+  "verdict": "LGTM | NEEDS_CHANGES | CRITICAL",
+  "inline_comments": [
+    {
+      "path": "relative/path/to/file.ts",
+      "line": 42,
+      "severity": "Bug | Security | Performance | Suggestion",
+      "body": "Clear, concise explanation of the issue and how to fix it."
+    }
+  ]
+}
 
-Be concise. Use bullet points. Reference specific files and line numbers."""
+Rules:
+- Only comment on genuinely important issues. Do NOT nitpick formatting or style.
+- Each inline comment must reference a real file path and line number from the diff.
+- The line number must be a line that was ADDED (prefixed with + in the diff).
+- Keep comments actionable and specific. Explain WHY and suggest a fix.
+- Maximum 10 inline comments. Focus on the most impactful issues.
+- If the PR looks good, return an empty inline_comments array with verdict "LGTM".
+- Do NOT comment on files under .github/ unless there are security issues."""
 
 
 def build_review_prompt(pr_info: dict, diff: str) -> str:
@@ -181,22 +254,20 @@ def build_review_prompt(pr_info: dict, diff: str) -> str:
     additions = pr_info.get("additions", 0)
     deletions = pr_info.get("deletions", 0)
 
-    return f"""## Pull Request Review Request
+    return f"""Review this pull request and respond with JSON only.
 
-**Title:** {title}
-**Author:** @{author}
-**Branch:** {head} → {base}
-**Stats:** {changed_files} files changed, +{additions} -{ deletions}
+Title: {title}
+Author: @{author}
+Branch: {head} -> {base}
+Stats: {changed_files} files changed, +{additions} -{deletions}
 
-### PR Description
+PR Description:
 {body[:2000] if body else "No description provided."}
 
-### Diff
+Diff:
 ```diff
 {diff}
-```
-
-Please review this pull request following your checklist and provide your structured review."""
+```"""
 
 
 def main():
@@ -210,42 +281,100 @@ def main():
     with open(event_path) as f:
         event = json.load(f)
 
-    pr_number = event.get("pull_request", {}).get("number")
+    pr_data = event.get("pull_request", {})
+    pr_number = pr_data.get("number")
     if not pr_number:
         print("::warning::No PR number found in event")
         sys.exit(0)
 
-    print(f"OxBot: reviewing PR #{pr_number}...")
+    commit_sha = pr_data.get("head", {}).get("sha", "")
+    print(f"OxBot: reviewing PR #{pr_number} (commit {commit_sha[:7]})...")
 
-    # Get PR details
+    # Get PR details and diff
     pr_info = github_api(f"/repos/{repo}/pulls/{pr_number}")
-
-    # Get diff
     raw_diff = get_pr_diff(repo, pr_number)
     if not raw_diff:
         print("::warning::Empty diff, skipping review")
         sys.exit(0)
 
+    # Build line position map for inline comments
+    line_map = parse_diff_line_map(raw_diff)
+
     # Sanitize and truncate
     safe_diff = sanitize_diff(raw_diff)
     final_diff = truncate_diff(safe_diff)
 
-    # Build prompt and call LLM
+    # Call LLM
     prompt = build_review_prompt(pr_info, final_diff)
-    review = call_kimi(prompt, SYSTEM_PROMPT)
+    response = call_kimi(prompt, SYSTEM_PROMPT)
 
-    # Format the comment
-    comment = f"""## OxBot Review
+    if not response:
+        # Fallback: post simple comment if API fails
+        github_api(
+            f"/repos/{repo}/issues/{pr_number}/comments",
+            method="POST",
+            data={"body": "## OxBot Review\n\nReview unavailable: API credentials not configured.\n\n---\n<sub>Automated code review by OxBot</sub>"},
+        )
+        print("OxBot: posted fallback comment (no API credentials)")
+        return
 
-{review}
+    # Parse JSON response
+    try:
+        # Strip markdown code fences if present
+        cleaned = response.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```\s*$", "", cleaned)
+        review = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # If LLM didn't return valid JSON, post as general comment
+        comment = f"## OxBot Review\n\n{response}\n\n---\n<sub>Automated code review by OxBot</sub>"
+        github_api(
+            f"/repos/{repo}/issues/{pr_number}/comments",
+            method="POST",
+            data={"body": comment},
+        )
+        print("OxBot: posted general comment (non-JSON response)")
+        return
 
----
-<sub>Automated code review by OxBot</sub>
-"""
+    # Process inline comments - resolve line numbers to diff positions
+    inline_comments = []
+    for c in review.get("inline_comments", []):
+        path = c.get("path", "")
+        line = c.get("line", 0)
 
-    # Post comment
-    post_review_comment(repo, pr_number, comment)
-    print(f"OxBot: review posted on PR #{pr_number}")
+        # Try to find the diff position for this line
+        if path in line_map and line in line_map[path]:
+            c["position"] = line_map[path][line]
+            inline_comments.append(c)
+        elif path in line_map:
+            # Line not in diff, try closest line
+            available_lines = sorted(line_map[path].keys())
+            closest = min(available_lines, key=lambda x: abs(x - line), default=None)
+            if closest and abs(closest - line) <= 5:
+                c["line"] = closest
+                c["position"] = line_map[path][closest]
+                inline_comments.append(c)
+            else:
+                # Can't map to diff, skip this comment
+                print(f"OxBot: skipping comment for {path}:{line} (not in diff)")
+        else:
+            print(f"OxBot: skipping comment for {path} (file not in diff)")
+
+    # Build summary
+    summary = review.get("summary", "No summary provided.")
+    verdict = review.get("verdict", "COMMENT")
+    verdict_display = {
+        "LGTM": "Verdict: LGTM",
+        "NEEDS_CHANGES": "Verdict: Needs Changes",
+        "CRITICAL": "Verdict: Critical Issues Found",
+    }.get(verdict, f"Verdict: {verdict}")
+
+    full_summary = f"{summary}\n\n**{verdict_display}** | {len(inline_comments)} inline comment(s)\n\n---\n<sub>Automated code review by OxBot</sub>"
+
+    # Post the review with inline comments
+    post_inline_review(repo, pr_number, commit_sha, full_summary, inline_comments)
+    print(f"OxBot: review posted on PR #{pr_number} with {len(inline_comments)} inline comments")
 
 
 if __name__ == "__main__":
