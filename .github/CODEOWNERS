@@ -1,0 +1,13 @@
+# CODEOWNERS - Protect critical infrastructure files
+# Changes to these paths require approval from maintainers.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# CI/CD workflows, scripts, and automation
+/.github/ @ms-shashank @beekay2706
+
+# Biome config (linting rules)
+/app/biome.json @ms-shashank @beekay2706
+
+# Package dependencies
+/app/package.json @ms-shashank @beekay2706
+/app/package-lock.json @ms-shashank @beekay2706

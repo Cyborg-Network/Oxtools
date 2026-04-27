@@ -4,6 +4,9 @@ import { NextResponse } from "next/server";
 import { createToolRoute } from "@/lib/create-tool-route";
 import { getToolById } from "@/lib/tools/registry";
 
+// Allow long-running tool executions (up to 5 min locally, 300s on Vercel)
+export const maxDuration = 300;
+
 /**
  * Dynamic API route for ALL tools.
  *
@@ -60,10 +63,12 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
 		const body = await request.text();
 		const contentType = request.headers.get("content-type") || "application/json";
 
+		// 10 minute timeout — security scans with LLM retries can take 5-10 min
 		const response = await fetch(targetUrl, {
 			method: "POST",
 			headers: { "Content-Type": contentType },
 			body,
+			signal: AbortSignal.timeout(600_000),
 		});
 
 		if (!response.ok) {
@@ -77,10 +82,33 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
 		// Stream text/plain responses (for agents with progress updates)
 		const respContentType = response.headers.get("content-type") || "";
 		if (respContentType.includes("text/plain") && response.body) {
-			return new Response(response.body, {
+			// CRITICAL: Actively pipe chunks through a new ReadableStream.
+			// Passing response.body directly causes Next.js to silently close
+			// long-lived streams after ~30s due to internal buffering.
+			const upstream = response.body;
+			const stream = new ReadableStream({
+				async start(controller) {
+					const reader = upstream.getReader();
+					try {
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+							controller.enqueue(value);
+						}
+						controller.close();
+					} catch (err) {
+						console.error("[Stream Proxy] Error piping:", err);
+						controller.close();
+					}
+				},
+			});
+
+			return new Response(stream, {
 				headers: {
 					"Content-Type": "text/plain; charset=utf-8",
 					"Transfer-Encoding": "chunked",
+					"X-Accel-Buffering": "no",
+					"Cache-Control": "no-cache",
 				},
 			});
 		}

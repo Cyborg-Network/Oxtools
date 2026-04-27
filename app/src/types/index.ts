@@ -5,10 +5,18 @@ export type ToolStatus = "active" | "coming-soon";
 export interface InputFieldConfig {
 	key: string;
 	label: string;
-	type: "code" | "textarea" | "select" | "text" | "image";
+	type: "code" | "textarea" | "select" | "text" | "image" | "files";
 	placeholder?: string;
 	rows?: number;
 	options?: { value: string; label: string }[];
+	/** For "files" type: accepted file extensions (e.g. ".py,.js,.zip") */
+	accept?: string;
+	/** For "files" type: max number of files */
+	maxFiles?: number;
+	/** For "files" type: max total upload size in MB */
+	maxSizeMb?: number;
+	/** Helper text shown below the input */
+	helperText?: string;
 }
 
 export interface ToolDefinition {

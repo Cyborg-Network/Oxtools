@@ -1,13 +1,15 @@
 import OpenAI from "openai";
 
-if (!process.env.OXLO_API_KEY) {
-	throw new Error("OXLO_API_KEY is not set in environment variables");
+function getOxloClient(apiKey?: string): OpenAI {
+	const key = apiKey || process.env.OXLO_API_KEY;
+	if (!key) {
+		throw new Error("OXLO_API_KEY is not set in environment variables");
+	}
+	return new OpenAI({
+		baseURL: "https://api.oxlo.ai/v1",
+		apiKey: key,
+	});
 }
-
-export const oxloClient = new OpenAI({
-	baseURL: "https://api.oxlo.ai/v1",
-	apiKey: process.env.OXLO_API_KEY,
-});
 
 export { AVAILABLE_MODELS, type ModelId } from "./models";
 
@@ -26,7 +28,7 @@ export async function generateCompletion(
 	model: string = "llama-3.3-70b",
 	apiKey?: string
 ): Promise<string> {
-	const client = apiKey ? new OpenAI({ baseURL: "https://api.oxlo.ai/v1", apiKey }) : oxloClient;
+	const client = getOxloClient(apiKey);
 	const response = await client.chat.completions.create({
 		model,
 		messages: buildMessages(prompt, systemPrompt),
@@ -43,7 +45,7 @@ export async function generateStreamingCompletion(
 	model: string = "llama-3.3-70b",
 	apiKey?: string
 ): Promise<ReadableStream<Uint8Array>> {
-	const client = apiKey ? new OpenAI({ baseURL: "https://api.oxlo.ai/v1", apiKey }) : oxloClient;
+	const client = getOxloClient(apiKey);
 	const stream = await client.chat.completions.create({
 		model,
 		messages: buildMessages(prompt, systemPrompt),
