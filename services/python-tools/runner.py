@@ -220,19 +220,98 @@ async def run_tool(tool_id: str, request: Request):
 
         result = await tool["module"].run(body)
 
-        # Async generator → stream response
+        # Async generator → stream response with keepalive
         if hasattr(result, "__aiter__"):
             async def stream():
+                import asyncio
                 async for chunk in result:
                     if isinstance(chunk, dict):
                         yield json.dumps(chunk) + "\n"
                     else:
                         yield str(chunk)
 
+            async def stream_with_keepalive():
+                """Wrap stream with keepalive pings to prevent timeout."""
+                import asyncio
+                queue = asyncio.Queue()
+
+                async def producer():
+                    try:
+                        logger.info(f"[Producer] Task started")
+                        async for chunk in result:
+                            if isinstance(chunk, dict):
+                                await queue.put(json.dumps(chunk) + "\n")
+                            else:
+                                await queue.put(str(chunk))
+                        logger.info(f"[Producer] LangGraph generator finished normally!")
+                    except asyncio.CancelledError:
+                        logger.error(f"[Producer] Task was CANCELLED!")
+                        raise
+                    except Exception as e:
+                        logger.error(f"Stream producer error: {e}")
+                    except BaseException as e:
+                        logger.error(f"[Producer] BaseException: {e}")
+                        raise
+                    finally:
+                        logger.info(f"[Producer] Task exiting, sending EOF")
+                        await queue.put(None)  # EOF marker
+
+                # Start the producer in the background
+                producer_task = asyncio.create_task(producer())
+                
+                # CRITICAL: Keep a strong reference in a GLOBAL scope.
+                # Previously, storing it on the queue created a reference cycle
+                # (queue -> task -> producer coroutine -> queue) which Python's
+                # cyclic garbage collector would silently destroy!
+                if not hasattr(app, "_active_tasks"):
+                    app._active_tasks = set()
+                app._active_tasks.add(producer_task)
+                producer_task.add_done_callback(app._active_tasks.discard)
+
+                get_task = None
+                while True:
+                    try:
+                        if get_task is None:
+                            get_task = asyncio.create_task(queue.get())
+                            
+                        # Wait for either the queue item or the timeout
+                        done, pending = await asyncio.wait(
+                            [get_task], 
+                            timeout=10.0,
+                            return_when=asyncio.FIRST_COMPLETED
+                        )
+                        
+                        if get_task in done:
+                            chunk = get_task.result()
+                            get_task = None  # Reset for next iteration
+                            
+                            if chunk is None:
+                                logger.info("[Stream] Received EOF from queue, breaking loop")
+                                break
+                            yield chunk
+                        else:
+                            # Timeout occurred, get_task is still pending
+                            logger.info("[Stream] Keepalive timeout, yielding dot")
+                            yield ".\n"
+                    except asyncio.CancelledError:
+                        logger.error("[Stream] stream_with_keepalive was CANCELLED by Starlette!")
+                        raise
+                    except Exception as e:
+                        logger.error(f"[Stream] Unexpected error in stream loop: {e}")
+                        break
+                
+                logger.info("[Stream] stream_with_keepalive completely finished")
+                
+                logger.info("Exited stream_with_keepalive loop.")
+
             return StreamingResponse(
-                stream(),
+                stream_with_keepalive(),
                 media_type="text/plain",
-                headers={"X-Content-Type-Options": "nosniff"},
+                headers={
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Accel-Buffering": "no",
+                    "Cache-Control": "no-cache",
+                },
             )
 
         elapsed = time.time() - start
@@ -250,4 +329,6 @@ async def run_tool(tool_id: str, request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9080)
+    # reload=True ensures that changes to Python files in the mounted volume
+    # automatically restart the server without needing to restart Docker!
+    uvicorn.run("runner:app", host="0.0.0.0", port=9080, reload=True)

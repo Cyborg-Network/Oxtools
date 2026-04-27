@@ -8,6 +8,7 @@ import { captionGenerator } from "./caption-generator";
 // --- Core tool definitions ---
 import { codeErrorDebugger } from "./code-error-debugger";
 import { codeSecurityScanner } from "./code-security-scanner";
+import { codeSecurityScannerV2 } from "./code-security-scanner-v2";
 import { colorPalette } from "./color-palette";
 // --- Newly activated tools (previously stubs) ---
 import { cssExplainer } from "./css-explainer";
@@ -15,6 +16,7 @@ import { csvInsightGenerator } from "./csv-insight-generator";
 import { deepResearch } from "./deep-research";
 import { grammarChecker } from "./grammar-checker";
 import { jsonToSchema } from "./json-to-schema";
+import { jsonToSchemaV2 } from "./json-to-schema-v2";
 import { logAnalyzer } from "./log-analyzer";
 import { mockApiGenerator } from "./mock-api-generator";
 import { pdfSummarizer } from "./pdf-summarizer";
@@ -73,9 +75,10 @@ export const categories: Record<ToolCategory, CategoryInfo> = {
 // ---------------------------------------------------------------------------
 
 export const tools: ToolDefinition[] = [
-	// Developer Tools (5)
+	// Developer Tools (6)
 	codeErrorDebugger,
 	codeSecurityScanner,
+	codeSecurityScannerV2,
 	unitTestGenerator,
 	prSummarizer,
 	cssExplainer,
@@ -86,6 +89,7 @@ export const tools: ToolDefinition[] = [
 	apiChangeAnalyzer,
 	mockApiGenerator,
 	jsonToSchema,
+	jsonToSchemaV2,
 	csvInsightGenerator,
 	sampleDatasetGenerator,
 
