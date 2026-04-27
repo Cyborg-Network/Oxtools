@@ -183,18 +183,21 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					</div>
 
 					{/* Low usage warning */}
-					{mounted && !toolUsage.limitReached && toolUsage.remaining <= 2 && toolUsage.remaining > 0 && (
-						<p className="text-xs text-amber-500">
-							⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for this
-							tool today.{" "}
-							<button
-								onClick={redirectToUpgrade}
-								className="underline underline-offset-2 hover:text-amber-400"
-							>
-								Upgrade for more
-							</button>
-						</p>
-					)}
+					{mounted &&
+						!toolUsage.limitReached &&
+						toolUsage.remaining <= 2 &&
+						toolUsage.remaining > 0 && (
+							<p className="text-xs text-amber-500">
+								⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for
+								this tool today.{" "}
+								<button
+									onClick={redirectToUpgrade}
+									className="underline underline-offset-2 hover:text-amber-400"
+								>
+									Upgrade for more
+								</button>
+							</p>
+						)}
 
 					{/* Results */}
 					<div className="space-y-2">
@@ -396,7 +399,10 @@ function InputField({
 					<div className="space-y-3">
 						<input
 							type="file"
-							accept={config.accept || ".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.zip,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env"}
+							accept={
+								config.accept ||
+								".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.zip,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env"
+							}
 							multiple
 							onChange={async (e) => {
 								const files = e.target.files;
@@ -438,12 +444,14 @@ function InputField({
 									try {
 										const text = await file.text();
 										const rawPath = file.webkitRelativePath || file.name;
-									const cleanPath = rawPath.includes("/") ? rawPath.split("/").slice(1).join("/") || rawPath : rawPath;
-									parts.push(`--- FILE: ${cleanPath} ---\n${text}`);
+										const cleanPath = rawPath.includes("/")
+											? rawPath.split("/").slice(1).join("/") || rawPath
+											: rawPath;
+										parts.push(`--- FILE: ${cleanPath} ---\n${text}`);
 									} catch {
-											const rp = file.webkitRelativePath || file.name;
-									const cp = rp.includes("/") ? rp.split("/").slice(1).join("/") || rp : rp;
-									parts.push(`--- FILE: ${cp} ---\n[Binary file — skipped]`);
+										const rp = file.webkitRelativePath || file.name;
+										const cp = rp.includes("/") ? rp.split("/").slice(1).join("/") || rp : rp;
+										parts.push(`--- FILE: ${cp} ---\n[Binary file — skipped]`);
 									}
 								}
 								onChange(parts.join("\n\n"));
@@ -457,21 +465,39 @@ function InputField({
 								📁 Select Folder
 								<input
 									type="file"
-									{...({webkitdirectory: "", directory: ""} as React.InputHTMLAttributes<HTMLInputElement>)}
+									{...({
+										webkitdirectory: "",
+										directory: "",
+									} as React.InputHTMLAttributes<HTMLInputElement>)}
 									className="hidden"
 									onChange={async (e) => {
 										const files = e.target.files;
 										if (!files || files.length === 0) return;
-										const exts = new Set(".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env,.lock".split(","));
+										const exts = new Set(
+											".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env,.lock".split(
+												","
+											)
+										);
 										const valid = Array.from(files).filter((f) => {
 											const ext = "." + f.name.split(".").pop()?.toLowerCase();
 											const p = f.webkitRelativePath || f.name;
-											if (p.includes("__pycache__") || p.includes("node_modules") || p.includes(".git/")) return false;
+											if (
+												p.includes("__pycache__") ||
+												p.includes("node_modules") ||
+												p.includes(".git/")
+											)
+												return false;
 											if (f.name.startsWith(".")) return false;
 											return exts.has(ext);
 										});
-										if (valid.length === 0) { alert("No supported files found."); return; }
-										if (valid.length > 50) { alert("Too many files (max 50)."); return; }
+										if (valid.length === 0) {
+											alert("No supported files found.");
+											return;
+										}
+										if (valid.length > 50) {
+											alert("Too many files (max 50).");
+											return;
+										}
 										const parts: string[] = [];
 										for (const file of valid) {
 											try {
@@ -479,7 +505,9 @@ function InputField({
 												const rp = file.webkitRelativePath || file.name;
 												const cp = rp.includes("/") ? rp.split("/").slice(1).join("/") || rp : rp;
 												parts.push(`--- FILE: ${cp} ---\n${text}`);
-											} catch { /* skip binary */ }
+											} catch {
+												/* skip binary */
+											}
 										}
 										onChange(parts.join("\n\n"));
 									}}
@@ -489,7 +517,7 @@ function InputField({
 						{value && (
 							<div className="rounded-md border border-input/50 bg-muted/30 p-3">
 								<p className="text-xs text-muted-foreground">
-									{value.startsWith("__ZIP__:") 
+									{value.startsWith("__ZIP__:")
 										? "📦 ZIP archive loaded — will be extracted server-side"
 										: `📄 ${(value.match(/--- FILE:/g) || []).length} file(s) loaded`}
 								</p>

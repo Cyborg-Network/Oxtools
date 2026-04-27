@@ -1,0 +1,41 @@
+# OxBot - AI-Powered PR Review Agent
+#
+# Automatically reviews every pull request using Kimi K2.6
+# via Azure Foundry. Posts structured review comments.
+#
+# Required secrets:
+#   AZURE_AI_ENDPOINT - Azure Foundry OpenAI-compatible endpoint
+#   AZURE_AI_KEY      - Azure Foundry API key
+
+name: OxBot PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai-review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    # Skip draft PRs
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run OxBot Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
+          AZURE_AI_KEY: ${{ secrets.AZURE_AI_KEY }}
+        run: python .github/scripts/ai_pr_review.py

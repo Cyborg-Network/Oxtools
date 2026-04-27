@@ -131,4 +131,3 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
 		);
 	}
 }
-

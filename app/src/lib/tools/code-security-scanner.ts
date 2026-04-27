@@ -8,7 +8,7 @@ export const codeSecurityScanner: ToolDefinition = {
 	icon: "Shield",
 	status: "active",
 
-	requiredFields: [],  // Either code or files
+	requiredFields: [], // Either code or files
 	defaultModel: "deepseek-r1-0528",
 	buildSystemPrompt: ({ language }) =>
 		`You are a senior application security engineer. Perform a deep security audit of the provided code.
@@ -39,10 +39,12 @@ Use markdown with clear headings, tables, and code blocks.${language ? ` The cod
 			key: "files",
 			label: "Upload project files (or ZIP)",
 			type: "files",
-			accept: ".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.zip,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env,.lock",
+			accept:
+				".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.zip,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env,.lock",
 			maxFiles: 50,
 			maxSizeMb: 10,
-			helperText: "⚠️ V1 simply dumps all files into one LLM prompt — no cross-file analysis, no CVE lookup, no obfuscation decoding. Use V2 for real multi-file scanning.",
+			helperText:
+				"⚠️ V1 simply dumps all files into one LLM prompt — no cross-file analysis, no CVE lookup, no obfuscation decoding. Use V2 for real multi-file scanning.",
 		},
 		{
 			key: "code",

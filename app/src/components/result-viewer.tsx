@@ -36,8 +36,9 @@ function MermaidViewer({ chart }: { chart: string }) {
 				const { svg: generatedSvg } = await mermaid.render(id, chart);
 				if (isMounted) setSvg(generatedSvg);
 				setError(null);
-			} catch (err: any) {
-				if (isMounted) setError(err.message || "Error rendering Mermaid chart");
+			} catch (err: unknown) {
+				if (isMounted)
+					setError(err instanceof Error ? err.message : "Error rendering Mermaid chart");
 			}
 		})();
 		return () => {
@@ -349,7 +350,10 @@ export function ResultViewer({
 									textColor = "text-primary font-semibold";
 								} else if (line.startsWith(">")) {
 									textColor = "text-zinc-300 ml-4 border-l-2 border-primary/30 pl-2";
-								} else if (line.toLowerCase().includes("error") || line.toLowerCase().includes("failed")) {
+								} else if (
+									line.toLowerCase().includes("error") ||
+									line.toLowerCase().includes("failed")
+								) {
 									textColor = "text-red-400";
 								}
 								return (
@@ -360,9 +364,18 @@ export function ResultViewer({
 							})}
 							{isLoading && !isReportStarted && (
 								<div className="mt-2 flex items-center gap-1.5 text-primary/70">
-									<span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70" style={{ animationDelay: "0ms" }} />
-									<span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70" style={{ animationDelay: "150ms" }} />
-									<span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70" style={{ animationDelay: "300ms" }} />
+									<span
+										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+										style={{ animationDelay: "0ms" }}
+									/>
+									<span
+										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+										style={{ animationDelay: "150ms" }}
+									/>
+									<span
+										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+										style={{ animationDelay: "300ms" }}
+									/>
 								</div>
 							)}
 						</div>
@@ -471,14 +484,19 @@ export function ResultViewer({
 												let codeText = "";
 												try {
 													const child = children as unknown as { props?: { children?: unknown } };
-													codeText = child?.props?.children ? String(child.props.children) : String(children || "");
+													codeText = child?.props?.children
+														? String(child.props.children)
+														: String(children || "");
 												} catch {
 													codeText = String(children || "");
 												}
 												return (
 													<div className="group/code relative my-4">
 														<CopyButton text={codeText} />
-														<pre className="overflow-x-auto rounded-lg border border-border bg-zinc-950 px-4 py-4 text-sm leading-relaxed text-zinc-100 dark:bg-zinc-900" {...props}>
+														<pre
+															className="overflow-x-auto rounded-lg border border-border bg-zinc-950 px-4 py-4 text-sm leading-relaxed text-zinc-100 dark:bg-zinc-900"
+															{...props}
+														>
 															{children}
 														</pre>
 													</div>
@@ -488,7 +506,10 @@ export function ResultViewer({
 												const isInline = !className;
 												if (isInline) {
 													return (
-														<code className="rounded-md bg-muted px-1.5 py-0.5 text-[13px] font-mono font-medium text-foreground" {...props}>
+														<code
+															className="rounded-md bg-muted px-1.5 py-0.5 text-[13px] font-mono font-medium text-foreground"
+															{...props}
+														>
 															{children}
 														</code>
 													);
@@ -498,7 +519,10 @@ export function ResultViewer({
 													return <MermaidViewer chart={String(children)} />;
 												}
 												return (
-													<code className={`${className || ""} text-sm leading-relaxed text-zinc-100`} {...props}>
+													<code
+														className={`${className || ""} text-sm leading-relaxed text-zinc-100`}
+														{...props}
+													>
 														{children}
 													</code>
 												);
@@ -506,53 +530,119 @@ export function ResultViewer({
 											table({ children, ...props }) {
 												return (
 													<div className="my-4 overflow-x-auto rounded-lg border border-border">
-														<table className="w-full text-sm" {...props}>{children}</table>
+														<table className="w-full text-sm" {...props}>
+															{children}
+														</table>
 													</div>
 												);
 											},
 											thead({ children, ...props }) {
-												return <thead className="border-b border-border bg-muted/50" {...props}>{children}</thead>;
+												return (
+													<thead className="border-b border-border bg-muted/50" {...props}>
+														{children}
+													</thead>
+												);
 											},
 											th({ children, ...props }) {
-												return <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-foreground" {...props}>{children}</th>;
+												return (
+													<th
+														className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-foreground"
+														{...props}
+													>
+														{children}
+													</th>
+												);
 											},
 											td({ children, ...props }) {
-												return <td className="border-t border-border px-4 py-2.5 text-foreground/90" {...props}>{children}</td>;
+												return (
+													<td
+														className="border-t border-border px-4 py-2.5 text-foreground/90"
+														{...props}
+													>
+														{children}
+													</td>
+												);
 											},
 											blockquote({ children, ...props }) {
 												return (
-													<blockquote className="my-4 rounded-r-lg border-l-4 border-l-primary/50 bg-muted/30 py-2 px-4 text-foreground/80 [&>p]:my-1" {...props}>
+													<blockquote
+														className="my-4 rounded-r-lg border-l-4 border-l-primary/50 bg-muted/30 py-2 px-4 text-foreground/80 [&>p]:my-1"
+														{...props}
+													>
 														{children}
 													</blockquote>
 												);
 											},
 											ul({ children, ...props }) {
-												return <ul className="my-3 list-disc space-y-1.5 pl-6" {...props}>{children}</ul>;
+												return (
+													<ul className="my-3 list-disc space-y-1.5 pl-6" {...props}>
+														{children}
+													</ul>
+												);
 											},
 											ol({ children, ...props }) {
-												return <ol className="my-3 list-decimal space-y-1.5 pl-6" {...props}>{children}</ol>;
+												return (
+													<ol className="my-3 list-decimal space-y-1.5 pl-6" {...props}>
+														{children}
+													</ol>
+												);
 											},
 											li({ children, ...props }) {
-												return <li className="leading-7 text-foreground/90" {...props}>{children}</li>;
+												return (
+													<li className="leading-7 text-foreground/90" {...props}>
+														{children}
+													</li>
+												);
 											},
 											h1({ children, ...props }) {
-												return <h1 className="mt-6 mb-4 text-xl font-semibold tracking-tight text-foreground" {...props}>{children}</h1>;
+												return (
+													<h1
+														className="mt-6 mb-4 text-xl font-semibold tracking-tight text-foreground"
+														{...props}
+													>
+														{children}
+													</h1>
+												);
 											},
 											h2({ children, ...props }) {
-												return <h2 className="mt-6 mb-3 border-b border-border pb-2 text-lg font-semibold tracking-tight text-foreground" {...props}>{children}</h2>;
+												return (
+													<h2
+														className="mt-6 mb-3 border-b border-border pb-2 text-lg font-semibold tracking-tight text-foreground"
+														{...props}
+													>
+														{children}
+													</h2>
+												);
 											},
 											h3({ children, ...props }) {
-												return <h3 className="mt-5 mb-2 text-base font-semibold tracking-tight text-foreground" {...props}>{children}</h3>;
+												return (
+													<h3
+														className="mt-5 mb-2 text-base font-semibold tracking-tight text-foreground"
+														{...props}
+													>
+														{children}
+													</h3>
+												);
 											},
 											p({ children, ...props }) {
-												return <p className="my-3 leading-7 text-foreground/90" {...props}>{children}</p>;
+												return (
+													<p className="my-3 leading-7 text-foreground/90" {...props}>
+														{children}
+													</p>
+												);
 											},
 											hr() {
 												return <hr className="my-6 border-border" />;
 											},
 											a({ children, href, ...props }) {
 												return (
-													<a href={href} className="text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary" target="_blank" rel="noopener noreferrer" {...props}>
+													<a
+														href={href}
+														className="text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary"
+														target="_blank"
+														rel="noopener noreferrer"
+														{...props}
+													>
 														{children}
 													</a>
 												);
@@ -568,11 +658,20 @@ export function ResultViewer({
 										Object.keys(parsedJson).filter((k) => k !== "code").length > 0 &&
 										activeTab === "code" && (
 											<div className="mt-8 pt-4 border-t border-border">
-												<h4 className="text-sm font-semibold mb-3 text-foreground" style={{ fontFamily: "var(--font-unbounded), sans-serif" }}>
+												<h4
+													className="text-sm font-semibold mb-3 text-foreground"
+													style={{ fontFamily: "var(--font-unbounded), sans-serif" }}
+												>
 													Additional Context
 												</h4>
 												<pre className="mt-3 bg-muted p-3 rounded-md overflow-x-auto text-xs text-muted-foreground whitespace-pre-wrap">
-													{JSON.stringify(Object.fromEntries(Object.entries(parsedJson).filter(([k]) => k !== "code")), null, 2)}
+													{JSON.stringify(
+														Object.fromEntries(
+															Object.entries(parsedJson).filter(([k]) => k !== "code")
+														),
+														null,
+														2
+													)}
 												</pre>
 											</div>
 										)}
