@@ -215,7 +215,7 @@ def main():
         print("::warning::No PR number found in event")
         sys.exit(0)
 
-    print(f"🤖 OxBot reviewing PR #{pr_number}...")
+    print(f"OxBot: reviewing PR #{pr_number}...")
 
     # Get PR details
     pr_info = github_api(f"/repos/{repo}/pulls/{pr_number}")
@@ -235,17 +235,17 @@ def main():
     review = call_kimi(prompt, SYSTEM_PROMPT)
 
     # Format the comment
-    comment = f"""## 🤖 OxBot AI Review
+    comment = f"""## OxBot Review
 
 {review}
 
 ---
-<sub>Powered by Kimi K2.6 via Azure Foundry | [Oxtools AI Review Agent]</sub>
+<sub>Automated code review by OxBot</sub>
 """
 
     # Post comment
     post_review_comment(repo, pr_number, comment)
-    print(f"✅ Review posted on PR #{pr_number}")
+    print(f"OxBot: review posted on PR #{pr_number}")
 
 
 if __name__ == "__main__":
