@@ -1,9 +1,16 @@
 import OpenAI from "openai";
 
+/**
+ * Get an Oxlo API client. The API key is resolved lazily at request time,
+ * never at build/import time. This prevents Next.js build failures when
+ * OXLO_API_KEY is not available during static page collection.
+ */
 function getOxloClient(apiKey?: string): OpenAI {
-	const key = apiKey || process.env.OXLO_API_KEY;
+	const key = apiKey || process.env.OXLO_API_KEY || "";
 	if (!key) {
-		throw new Error("OXLO_API_KEY is not set in environment variables");
+		throw new Error(
+			"OXLO_API_KEY is not set. Add it to your environment variables or pass an API key via the x-api-key header."
+		);
 	}
 	return new OpenAI({
 		baseURL: "https://api.oxlo.ai/v1",

@@ -6,6 +6,9 @@ import { getToolById } from "@/lib/tools/registry";
 
 // Allow long-running tool executions (up to 5 min locally, 300s on Vercel)
 export const maxDuration = 300;
+// Force dynamic rendering — prevents Next.js from evaluating this route
+// at build time (which would fail without OXLO_API_KEY in CI)
+export const dynamic = "force-dynamic";
 
 /**
  * Dynamic API route for ALL tools.
