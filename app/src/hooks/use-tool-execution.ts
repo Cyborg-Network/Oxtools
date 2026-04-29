@@ -44,6 +44,9 @@ export function useToolExecution({
 			const controller = new AbortController();
 			abortControllerRef.current = controller;
 
+			// 10-minute timeout for long-running tools (e.g. screenshot-to-code swarm)
+			const timeoutId = setTimeout(() => controller.abort(), 600_000);
+
 			setIsLoading(true);
 			setError(null);
 			setResult("");
@@ -110,6 +113,7 @@ export function useToolExecution({
 				setError({ message, code: "client_error" });
 				setResult("");
 			} finally {
+				clearTimeout(timeoutId);
 				setIsLoading(false);
 				abortControllerRef.current = null;
 			}

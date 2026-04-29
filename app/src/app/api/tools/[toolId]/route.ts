@@ -4,6 +4,9 @@ import { NextResponse } from "next/server";
 import { createToolRoute } from "@/lib/create-tool-route";
 import { getToolById } from "@/lib/tools/registry";
 
+// Allow this route to run for up to 10 minutes (for multi-agent swarm pipelines)
+export const maxDuration = 600;
+
 /**
  * Dynamic API route for ALL tools.
  *
@@ -56,14 +59,19 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
 	const runnerUrl = process.env.TOOL_RUNNER_URL || "http://localhost:9080";
 	const targetUrl = `${runnerUrl}/api/tools/${toolId}`;
 
-	try {
-		const body = await request.text();
-		const contentType = request.headers.get("content-type") || "application/json";
+	const body = await request.text();
+	const contentType = request.headers.get("content-type") || "application/json";
 
+	// 10-minute timeout for long-running pipelines (multi-agent swarm)
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 600_000);
+
+	try {
 		const response = await fetch(targetUrl, {
 			method: "POST",
 			headers: { "Content-Type": contentType },
 			body,
+			signal: controller.signal,
 		});
 
 		if (!response.ok) {
@@ -101,5 +109,7 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
 			},
 			{ status: 503 }
 		);
+	} finally {
+		clearTimeout(timeoutId);
 	}
 }
