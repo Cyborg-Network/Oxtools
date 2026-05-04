@@ -20,6 +20,7 @@ import type { InputFieldConfig } from "@/types";
  * src/lib/tools/<tool-id>.ts - this page handles the rest.
  */
 
+
 export default function DynamicToolPage() {
 	const params = useParams<{ toolId: string }>();
 	const tool = getToolById(params.toolId);
