@@ -1,0 +1,5 @@
+# JSON to Schema V2 — Dependencies
+# Core LangGraph agent framework
+langgraph>=0.2.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
