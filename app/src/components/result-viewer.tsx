@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import mermaid from "mermaid";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ToolError } from "@/hooks/use-tool-execution";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -68,7 +69,7 @@ function MermaidViewer({ chart }: { chart: string }) {
 	);
 }
 
-import type { ToolError } from "@/hooks/use-tool-execution";
+
 
 interface ResultViewerProps {
 	result: string;
