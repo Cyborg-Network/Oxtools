@@ -263,6 +263,7 @@ export function ResultViewer({
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const editIframeRef = useRef<HTMLIFrameElement>(null);
 	const editHtmlSetRef = useRef(false);
+	const snapshotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const [copiedAll, setCopiedAll] = useState(false);
 	const [activeTab, setActiveTab] = useState<"preview" | "edit" | "compare" | "code">("preview");
 	const [isFullscreen, setIsFullscreen] = useState(false);
@@ -290,18 +291,15 @@ export function ResultViewer({
 	// Bug 3 fix — stable callbacks that read editIframeRef.current at call-time
 	const sendToEditIframe = useCallback((msg: Record<string, unknown>) => {
 		editIframeRef.current?.contentWindow?.postMessage(msg, '*');
-		// Issue 3: also prime the iframe's _allowedOrigin on first contact
-		if (msg.type !== '__init_origin__') {
-			editIframeRef.current?.contentWindow?.postMessage(
-				{ type: '__init_origin__' }, '*'
-			);
-		}
 	}, []);
 
 	const applyStyle = useCallback((property: string, value: string) => {
 		sendToEditIframe({ type: 'apply-style', property, value });
-		// Force iframe to send back updated DOM so currentHtml is always current
-		sendToEditIframe({ type: 'get-html' });
+		// Issue 24: Debounce snapshot requests
+		if (snapshotTimeoutRef.current) clearTimeout(snapshotTimeoutRef.current);
+		snapshotTimeoutRef.current = setTimeout(() => {
+			sendToEditIframe({ type: 'get-html' });
+		}, 300);
 	}, [sendToEditIframe]);
 
 	// Escape key exits fullscreen
@@ -319,6 +317,10 @@ export function ResultViewer({
 			editIframeRef.current.srcdoc = currentHtml || htmlWithUpload;
 			editHtmlSetRef.current = true;
 		}
+		// Issue 9: reset the guard when unmounting the tab
+		return () => {
+			editHtmlSetRef.current = false;
+		};
 	}, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	// Bug 1 fix — when AI suggestion returns new HTML, push it into the already-mounted iframe
@@ -331,10 +333,9 @@ export function ResultViewer({
 	// Listen for postMessage from iframe (edit script)
 	useEffect(() => {
 		const handler = (e: MessageEvent) => {
-			// Issue 4: validate origin — srcdoc iframes have origin 'null' (string).
-			// Reject messages from any other origin to prevent spoofing.
-			if (e.origin !== 'null' && e.source !== editIframeRef.current?.contentWindow
-					&& e.source !== iframeRef.current?.contentWindow) return;
+			// Issue 4: validate origin — strict source check.
+			if (!e.source || (e.source !== editIframeRef.current?.contentWindow
+					&& e.source !== iframeRef.current?.contentWindow)) return;
 			const msg = e.data;
 			if (!msg?.type) return;
 			if (msg.type === 'element-select') {
@@ -592,6 +593,9 @@ export function ResultViewer({
 								    same-origin does NOT grant access to the parent document. */}
 								<iframe ref={editIframeRef} title="Edit Preview"
 									key={currentHtml}
+									onLoad={() => {
+										editIframeRef.current?.contentWindow?.postMessage({ type: '__init_origin__' }, '*');
+									}}
 									className="h-full w-full border-0"
 									sandbox="allow-scripts allow-same-origin allow-popups" />
 							</div>

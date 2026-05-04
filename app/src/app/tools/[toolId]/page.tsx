@@ -47,6 +47,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const { result, isLoading, error, execute, setResult } = useToolExecution({
 		apiEndpoint: `/api/tools/${tool.id}`,
 		toolId: tool.id,
+		timeoutMs: tool.timeoutMs,
 	});
 
 	const setField = useCallback((key: string, value: string) => {
@@ -228,9 +229,10 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 						isLoading={isLoading}
 						error={error}
 						streaming
-						uploadedImageSrc={
-							(fields[tool.inputs.find(i => i.type === 'image')?.key ?? 'image'] ?? undefined) as string | undefined
-						}
+						uploadedImageSrc={(() => {
+							const imageKey = tool.inputs.find(i => i.type === 'image')?.key;
+							return imageKey ? fields[imageKey] : undefined;
+						})()}
 					/>
 					</div>
 				</div>

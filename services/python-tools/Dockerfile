@@ -3,8 +3,8 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
-    chromium \
     tesseract-ocr \
+    tesseract-ocr-eng \
     libtesseract-dev \
     libgl1 \
     libglib2.0-0 \
@@ -26,8 +26,8 @@ RUN for dir in tools/*/; do \
       fi; \
     done
 
-# Install Playwright Chromium binary WITHOUT the failing deps flag
-RUN playwright install chromium
+# Install Playwright Chromium binary with the required deps
+RUN apt-get update && playwright install --with-deps chromium
 
 # Copy the runner
 COPY runner.py .

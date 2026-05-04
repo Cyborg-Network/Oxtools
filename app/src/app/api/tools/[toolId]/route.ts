@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createToolRoute } from "@/lib/create-tool-route";
 import { getToolById } from "@/lib/tools/registry";
-import http from "node:http";
-
+// Issue 5: maxDuration is set to 600s (10 minutes).
+// We align the AbortController timeout to match this limit exactly,
+// so that requests gracefully abort rather than hanging when Vercel kills the function.
 export const maxDuration = 600;
 export const dynamic = "force-dynamic";
 
@@ -34,95 +35,57 @@ export async function POST(
   return handler(request);
 }
 
-
-function proxyViaNodeHttp(
-  targetUrl: string,
-  body: string,
-  contentType: string,
-  signal: AbortSignal
-): Promise<{ status: number; contentType: string; body: string }> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(targetUrl);
-
-    const req = http.request(
-      {
-        hostname: url.hostname,
-        port:     url.port || 80,
-        path:     url.pathname + url.search,
-        method:   "POST",
-        headers: {
-          "Content-Type":   contentType,
-          "Content-Length": Buffer.byteLength(body),
-        },
-        
-        timeout: 3_600_000,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
-        res.on("end", () => {
-          resolve({
-            status:      res.statusCode ?? 500,
-            contentType: res.headers["content-type"] ?? "application/json",
-            body:        Buffer.concat(chunks).toString("utf-8"),
-          });
-        });
-        res.on("error", reject);
-      }
-    );
-
-    // AbortController wires into socket destruction
-    signal.addEventListener("abort", () => {
-      req.destroy();
-      reject(Object.assign(new Error("Request aborted"), { name: "AbortError" }));
-    });
-
-    req.on("timeout", () => {
-      req.destroy();
-      reject(new Error("Node http socket timeout — Docker container may have crashed"));
-    });
-
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
-}
-
 async function proxyToToolRunner(request: NextRequest, toolId: string) {
   const runnerUrl = process.env.TOOL_RUNNER_URL || "http://localhost:9080";
   const targetUrl = `${runnerUrl}/api/tools/${toolId}`;
   const body        = await request.text();
   const contentType = request.headers.get("content-type") || "application/json";
 
-  // 1-hour abort controller — lets the Python pipeline run as long as it needs.
-  // The pipeline itself has its own internal step timeouts in tool.py.
+  // Issue 5: Match the Vercel function timeout (maxDuration = 600s)
   const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 3_600_000);
+  const timeoutId  = setTimeout(() => controller.abort(), 600_000);
 
   try {
-    const response = await proxyViaNodeHttp(
-      targetUrl,
+    // Issue 6: Replace http.request with fetch for protocol awareness (HTTPS support)
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": contentType,
+      },
       body,
-      contentType,
-      controller.signal
-    );
+      signal: controller.signal,
+    });
 
     clearTimeout(timeoutId);
 
-    if (response.status < 200 || response.status >= 300) {
+    const resContentType = response.headers.get("content-type") || "application/json";
+
+    if (!response.ok) {
+      const errBody = await response.text();
       return NextResponse.json(
-        { error: `Tool runner error: ${response.body}`, code: "runner_error" },
+        { error: `Tool runner error: ${errBody}`, code: "runner_error" },
         { status: response.status }
       );
     }
 
-    if (response.contentType.includes("text/plain")) {
+    // Issue 7: Restore streaming for text/plain
+    if (resContentType.includes("text/plain")) {
       return new Response(response.body, {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
     }
 
-    const data = JSON.parse(response.body);
+    const responseText = await response.text();
+    let data;
+    try {
+      // Issue 8: Wrap JSON.parse in try-catch
+      data = JSON.parse(responseText);
+    } catch {
+      return NextResponse.json(
+        { error: `Tool runner returned non-JSON: ${responseText.substring(0, 200)}`, code: "proxy_error" },
+        { status: 502 }
+      );
+    }
     
     return NextResponse.json(data.result !== undefined ? data.result : data);
 
@@ -130,14 +93,14 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
     clearTimeout(timeoutId);
 
     if (error.name === "AbortError") {
-      console.error(`[Tool Runner Proxy] 1-hour timeout for ${toolId}`);
+      console.error(`[Tool Runner Proxy] 10-minute timeout for ${toolId}`);
       return NextResponse.json(
-        { error: "Pipeline timed out after 1 hour.", code: "timeout_1h" },
+        { error: "Pipeline timed out after 10 minutes.", code: "timeout_10m" },
         { status: 504 }
       );
     }
 
-    if (error.code === "ECONNREFUSED") {
+    if (error.cause?.code === "ECONNREFUSED" || error.code === "ECONNREFUSED") {
       console.error(`[Tool Runner Proxy] Runner offline at ${targetUrl}`);
       return NextResponse.json(
         {

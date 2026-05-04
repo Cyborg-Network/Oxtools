@@ -7,6 +7,7 @@ import { saveToolHistory } from "@/lib/history-db";
 interface UseToolExecutionOptions {
 	apiEndpoint: string;
 	toolId?: string;
+	timeoutMs?: number;
 }
 
 export interface ToolError {
@@ -27,6 +28,7 @@ interface UseToolExecutionReturn {
 export function useToolExecution({
 	apiEndpoint,
 	toolId: explicitToolId,
+	timeoutMs = 30_000,
 }: UseToolExecutionOptions): UseToolExecutionReturn {
 	const [result, setResult] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
@@ -44,8 +46,7 @@ export function useToolExecution({
 			const controller = new AbortController();
 			abortControllerRef.current = controller;
 
-			// 10-minute timeout for long-running tools (e.g. screenshot-to-code swarm)
-			const timeoutId = setTimeout(() => controller.abort(), 600_000);
+			const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
 			setIsLoading(true);
 			setError(null);

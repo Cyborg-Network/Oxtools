@@ -29,9 +29,9 @@ MANIFEST = {
 COMPRESS_MAX_PX       = 1920
 COMPRESS_JPEG_QUALITY = 90
 
-MODEL_EXTRACTOR = "Kimi-K2.6"
-MODEL_CODER     = "Kimi-K2.5"
-MODEL_JUDGE     = "Kimi-K2.5"
+MODEL_EXTRACTOR = "kimi-k2.6"
+MODEL_CODER = "kimi-k2.5"
+MODEL_JUDGE = "kimi-k2.5"
 
 OXLO_BASE_URL = "https://api.oxlo.ai/v1"
 
@@ -259,14 +259,22 @@ def compute_ssim(ref: Image.Image, rendered: Image.Image) -> float:
     ref_resized  = ref.resize(rendered_rgb.size, Image.LANCZOS).convert("RGB")
     ref_arr    = np.array(ref_resized,  dtype=np.float32)
     render_arr = np.array(rendered_rgb, dtype=np.float32)
-    score = ssim_fn(
-        ref_arr, render_arr,
-        data_range=255.0,
-        channel_axis=2,
-        win_size=21,
-        gaussian_weights=True,
-    )
-    return max(0.0, float(score)) * 100.0
+    try:
+        win_size = min(21, rendered_rgb.size[0], rendered_rgb.size[1])
+        win_size = win_size if win_size % 2 == 1 else win_size - 1
+        if win_size < 3:
+            return 0.0
+        score = ssim_fn(
+            ref_arr, render_arr,
+            data_range=255.0,
+            channel_axis=2,
+            win_size=win_size,
+            gaussian_weights=True,
+        )
+        return max(0.0, float(score)) * 100.0
+    except Exception as exc:
+        logger.warning("SSIM computation failed: %s", exc)
+        return 0.0
 
 
 # ─── NEW #10 — _call_api with 600s timeout, 3 attempts ───────────────────────
@@ -534,7 +542,7 @@ def _step3_judge(
 
     try:
        
-        raw = _call_api(client, MODEL_JUDGE, messages, MAX_TOKENS_JUDGE, temperature=0.0, attempt_limit=1)
+        raw = _call_api(client, MODEL_JUDGE, messages, MAX_TOKENS_JUDGE, temperature=0.0, attempt_limit=2)
         raw = raw.strip()
         logger.info("[Step 3] Judge full response (%d chars): %r", len(raw), raw[-200:])
 
@@ -778,40 +786,6 @@ async def _run_healing_loop(
     return current_html, ssim_score, rendered, passes_run
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STEP 1 — Spatial Extraction (iterative edits only)
-# ═══════════════════════════════════════════════════════════════════════════════
-def _step1_extract_layout(client: OpenAI, image_b64: str, mime: str) -> str:
-    logger.info("[Step 1] Spatial extraction via %s", MODEL_EXTRACTOR)
-    messages = [
-        {"role": "system", "content": EXTRACTOR_SYSTEM},
-        {"role": "user", "content": [
-            {"type": "image_url",
-             "image_url": {"url": f"data:{mime};base64,{image_b64}", "detail": "high"}},
-            {"type": "text", "text": EXTRACTOR_USER},
-        ]},
-    ]
-    raw = _call_api(client, MODEL_EXTRACTOR, messages, MAX_TOKENS_EXTRACT, temperature=0.0)
-    raw = raw.strip()
-    if raw.startswith("```"):
-        lines = raw.split("\n")[1:]
-        if lines and lines[-1].strip().startswith("```"):
-            lines = lines[:-1]
-        raw = "\n".join(lines).strip()
-    try:
-        json.loads(raw)
-    except json.JSONDecodeError as e:
-        logger.warning("[Step 1] JSON invalid (%s) — attempting truncation repair", e)
-        last_bracket = raw.rfind("}")
-        if last_bracket != -1:
-            raw = raw[:last_bracket + 1] + "]"
-        try:
-            json.loads(raw)
-            logger.info("[Step 1] Truncation repair succeeded")
-        except json.JSONDecodeError:
-            raise RuntimeError(f"[Step 1] Unrecoverable JSON after repair: {e}")
-    logger.info("[Step 1] Layout extracted (%d chars)", len(raw))
-    return raw
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1153,11 +1127,6 @@ async def _run_pipeline(
     total_ms = int((time.perf_counter() - t0) * 1000)
     logger.info("Pipeline complete in %dms — SSIM %.1f%%", total_ms, ssim_score)
 
-    if rendered:
-        try:
-            rendered.save("debug_final_render.png")
-        except Exception:
-            pass
 
     return {
         "code":               _inject_upload_script(_inject_edit_script(best_html)),
