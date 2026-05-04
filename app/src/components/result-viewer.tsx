@@ -39,8 +39,9 @@ function MermaidViewer({ chart }: { chart: string }) {
 				const { svg: generatedSvg } = await mermaid.render(id, chart);
 				if (isMounted) setSvg(generatedSvg);
 				setError(null);
-			} catch (err: any) {
-				if (isMounted) setError(err.message || "Error rendering Mermaid chart");
+			} catch (err: unknown) {
+				if (isMounted)
+					setError(err instanceof Error ? err.message : "Error rendering Mermaid chart");
 			}
 		})();
 		return () => {
@@ -423,6 +424,21 @@ export function ResultViewer({
 
 	let parsedJson: { code?: string; [key: string]: any } | null = null;
 	let displayMarkdown = result;
+	let pipelineLogs = "";
+	let isReportStarted = false;
+
+	if (result) {
+		if (result.includes("---REPORT_START---")) {
+			const parts = result.split("---REPORT_START---");
+			pipelineLogs = parts[0].trim();
+			displayMarkdown = parts[1] || "";
+			isReportStarted = true;
+		} else if (streaming && isLoading) {
+			// If we haven't hit the report marker yet, everything is logs.
+			pipelineLogs = result.trim();
+			displayMarkdown = "";
+		}
+	}
 
 	if (result) {
 		try {

@@ -45,8 +45,11 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		return initial;
 	});
 
+	// Tier2 tools MUST bypass Next.js proxy buffering to prevent silent timeouts on long executions
+	const runnerUrl = process.env.NEXT_PUBLIC_TOOL_RUNNER_URL || "http://localhost:9080";
+	const apiBase = tool.tier === "tier2" ? `${runnerUrl}/api/tools` : "/api/tools";
 	const { result, isLoading, error, execute, setResult } = useToolExecution({
-		apiEndpoint: `/api/tools/${tool.id}`,
+		apiEndpoint: `${apiBase}/${tool.id}`,
 		toolId: tool.id,
 		timeoutMs: tool.timeoutMs,
 	});
@@ -95,13 +98,17 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	// ── END HYDRATION FIX ──────────────────────────────────────────────────────
 
 	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+	// Defer localStorage-dependent rendering to prevent hydration mismatch.
+	// Server always renders the "Run" button; limit state only applies after mount.
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => setMounted(true), []);
 
 	// Show popup when limit is newly reached
 	useEffect(() => {
-		if (toolUsage.limitReached) {
+		if (mounted && toolUsage.limitReached) {
 			setShowUpgradeDialog(true);
 		}
-	}, [toolUsage.limitReached]);
+	}, [mounted, toolUsage.limitReached]);
 
 	const handleExecute = () => {
 		// Check per-tool usage limit
@@ -142,7 +149,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 
 					{/* Execute button + Usage counter */}
 					<div className="flex items-center gap-4 flex-wrap">
-						{toolUsage.limitReached ? (
+						{mounted && toolUsage.limitReached ? (
 							<div className="space-y-2">
 								<Button
 									onClick={redirectToUpgrade}
@@ -169,56 +176,57 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 							</Button>
 						)}
 
-						{/* Usage indicator pill — suppressHydrationWarning because
-						    toolUsage.used/remaining come from localStorage which is
-						    unavailable during SSR, causing a first-render mismatch. */}
+						{/* Usage indicator pill - per tool */}
+						{/* Deferred until after mount to prevent hydration mismatch from localStorage */}
 						<div className="flex items-center gap-2">
 							<div
 								suppressHydrationWarning
 								className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-									toolUsage.limitReached
-										? "bg-destructive/10 text-destructive"
-										: toolUsage.remaining <= 2
-											? "bg-amber-500/10 text-amber-500"
-											: "bg-primary/10 text-primary"
+									!mounted
+										? "bg-primary/10 text-primary"
+										: toolUsage.limitReached
+											? "bg-destructive/10 text-destructive"
+											: toolUsage.remaining <= 2
+												? "bg-amber-500/10 text-amber-500"
+												: "bg-primary/10 text-primary"
 								}`}
 							>
 								<span
 									suppressHydrationWarning
 									className={`h-1.5 w-1.5 rounded-full ${
-										toolUsage.limitReached
-											? "bg-destructive"
-											: toolUsage.remaining <= 2
-												? "bg-amber-500"
-												: "bg-primary"
+										!mounted
+											? "bg-primary"
+											: toolUsage.limitReached
+												? "bg-destructive"
+												: toolUsage.remaining <= 2
+													? "bg-amber-500"
+													: "bg-primary"
 									}`}
 								/>
-								<span suppressHydrationWarning>
-									{toolUsage.used}/{toolUsage.limit} uses today
-								</span>
+								{mounted ? toolUsage.used : 0}/{toolUsage.limit} uses today
 							</div>
-							<span
-								suppressHydrationWarning
-								className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-							>
-								{toolUsage.plan}
+							<span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+								{mounted ? toolUsage.plan : "free"}
 							</span>
 						</div>
 					</div>
 
 					{/* Low usage warning */}
-					{!toolUsage.limitReached && toolUsage.remaining <= 2 && toolUsage.remaining > 0 && (
-						<p className="text-xs text-amber-500">
-							⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for this
-							tool today.{" "}
-							<button
-								onClick={redirectToUpgrade}
-								className="underline underline-offset-2 hover:text-amber-400"
-							>
-								Upgrade for more
-							</button>
-						</p>
-					)}
+					{mounted &&
+						!toolUsage.limitReached &&
+						toolUsage.remaining <= 2 &&
+						toolUsage.remaining > 0 && (
+							<p className="text-xs text-amber-500">
+								⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for
+								this tool today.{" "}
+								<button
+									onClick={redirectToUpgrade}
+									className="underline underline-offset-2 hover:text-amber-400"
+								>
+									Upgrade for more
+								</button>
+							</p>
+						)}
 
 					{/* Results */}
 					<div className="space-y-2">
@@ -418,6 +426,145 @@ function InputField({
 					</div>
 				</div>
 			);
+
+		case "files":
+			return (
+				<div className="space-y-2">
+					<Label>{config.label}</Label>
+					<div className="space-y-3">
+						<input
+							type="file"
+							accept={
+								config.accept ||
+								".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.zip,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env"
+							}
+							multiple
+							onChange={async (e) => {
+								const files = e.target.files;
+								if (!files || files.length === 0) return;
+
+								const maxFiles = config.maxFiles || 50;
+								const maxSizeMb = config.maxSizeMb || 10;
+								const maxSizeBytes = maxSizeMb * 1024 * 1024;
+
+								// Check file count
+								if (files.length > maxFiles) {
+									alert(`Maximum ${maxFiles} files allowed. You selected ${files.length}.`);
+									return;
+								}
+
+								// Check total size
+								let totalSize = 0;
+								for (const f of Array.from(files)) totalSize += f.size;
+								if (totalSize > maxSizeBytes) {
+									alert(`Total upload size exceeds ${maxSizeMb}MB limit.`);
+									return;
+								}
+
+								// Handle ZIP files
+								if (files.length === 1 && files[0].name.endsWith(".zip")) {
+									const reader = new FileReader();
+									reader.onloadend = () => {
+										// Send as base64 with a zip: prefix so backend knows
+										const base64 = (reader.result as string).split(",")[1];
+										onChange(`__ZIP__:${base64}`);
+									};
+									reader.readAsDataURL(files[0]);
+									return;
+								}
+
+								// Read all files as text and concatenate with markers
+								const parts: string[] = [];
+								for (const file of Array.from(files)) {
+									try {
+										const text = await file.text();
+										const rawPath = file.webkitRelativePath || file.name;
+										const cleanPath = rawPath.includes("/")
+											? rawPath.split("/").slice(1).join("/") || rawPath
+											: rawPath;
+										parts.push(`--- FILE: ${cleanPath} ---\n${text}`);
+									} catch {
+										const rp = file.webkitRelativePath || file.name;
+										const cp = rp.includes("/") ? rp.split("/").slice(1).join("/") || rp : rp;
+										parts.push(`--- FILE: ${cp} ---\n[Binary file — skipped]`);
+									}
+								}
+								onChange(parts.join("\n\n"));
+							}}
+							className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium hover:file:cursor-pointer hover:file:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						/>
+						{/* Folder picker for directory uploads */}
+						<div className="flex items-center gap-2">
+							<span className="text-xs text-muted-foreground">or</span>
+							<label className="cursor-pointer rounded-md border border-dashed border-input/60 bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors">
+								📁 Select Folder
+								<input
+									type="file"
+									{...({
+										webkitdirectory: "",
+										directory: "",
+									} as React.InputHTMLAttributes<HTMLInputElement>)}
+									className="hidden"
+									onChange={async (e) => {
+										const files = e.target.files;
+										if (!files || files.length === 0) return;
+										const exts = new Set(
+											".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env,.lock".split(
+												","
+											)
+										);
+										const valid = Array.from(files).filter((f) => {
+											const ext = "." + f.name.split(".").pop()?.toLowerCase();
+											const p = f.webkitRelativePath || f.name;
+											if (
+												p.includes("__pycache__") ||
+												p.includes("node_modules") ||
+												p.includes(".git/")
+											)
+												return false;
+											if (f.name.startsWith(".")) return false;
+											return exts.has(ext);
+										});
+										if (valid.length === 0) {
+											alert("No supported files found.");
+											return;
+										}
+										if (valid.length > 50) {
+											alert("Too many files (max 50).");
+											return;
+										}
+										const parts: string[] = [];
+										for (const file of valid) {
+											try {
+												const text = await file.text();
+												const rp = file.webkitRelativePath || file.name;
+												const cp = rp.includes("/") ? rp.split("/").slice(1).join("/") || rp : rp;
+												parts.push(`--- FILE: ${cp} ---\n${text}`);
+											} catch {
+												/* skip binary */
+											}
+										}
+										onChange(parts.join("\n\n"));
+									}}
+								/>
+							</label>
+						</div>
+						{value && (
+							<div className="rounded-md border border-input/50 bg-muted/30 p-3">
+								<p className="text-xs text-muted-foreground">
+									{value.startsWith("__ZIP__:")
+										? "📦 ZIP archive loaded — will be extracted server-side"
+										: `📄 ${(value.match(/--- FILE:/g) || []).length} file(s) loaded`}
+								</p>
+							</div>
+						)}
+						{config.helperText && (
+							<p className="text-xs text-muted-foreground">{config.helperText}</p>
+						)}
+					</div>
+				</div>
+			);
+
 		default:
 			return null;
 	}

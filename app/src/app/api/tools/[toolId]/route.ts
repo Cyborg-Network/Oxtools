@@ -36,85 +36,78 @@ export async function POST(
 }
 
 async function proxyToToolRunner(request: NextRequest, toolId: string) {
-  const runnerUrl = process.env.TOOL_RUNNER_URL || "http://localhost:9080";
-  const targetUrl = `${runnerUrl}/api/tools/${toolId}`;
-  const body        = await request.text();
-  const contentType = request.headers.get("content-type") || "application/json";
+	const runnerUrl = process.env.TOOL_RUNNER_URL || "http://localhost:9080";
+	const targetUrl = `${runnerUrl}/api/tools/${toolId}`;
 
-  // Issue 5: Match the Vercel function timeout (maxDuration = 600s)
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 600_000);
+	try {
+		const body = await request.text();
+		const contentType = request.headers.get("content-type") || "application/json";
 
-  try {
-    // Issue 6: Replace http.request with fetch for protocol awareness (HTTPS support)
-    const response = await fetch(targetUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": contentType,
-      },
-      body,
-      signal: controller.signal,
-    });
+		// 10 minute timeout — security scans with LLM retries can take 5-10 min
+		const response = await fetch(targetUrl, {
+			method: "POST",
+			headers: { "Content-Type": contentType },
+			body,
+			signal: AbortSignal.timeout(600_000),
+		});
 
-    clearTimeout(timeoutId);
+		if (!response.ok) {
+			const errorText = await response.text();
+			return NextResponse.json(
+				{ error: `Tool runner error: ${errorText}`, code: "runner_error" },
+				{ status: response.status }
+			);
+		}
 
-    const resContentType = response.headers.get("content-type") || "application/json";
+		// Stream text/plain responses (for agents with progress updates)
+		const respContentType = response.headers.get("content-type") || "";
+		if (respContentType.includes("text/plain") && response.body) {
+			// CRITICAL: Actively pipe chunks through a new ReadableStream.
+			// Passing response.body directly causes Next.js to silently close
+			// long-lived streams after ~30s due to internal buffering.
+			const upstream = response.body;
+			const stream = new ReadableStream({
+				async start(controller) {
+					const reader = upstream.getReader();
+					try {
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+							controller.enqueue(value);
+						}
+						controller.close();
+					} catch (err) {
+						console.error("[Stream Proxy] Error piping:", err);
+						controller.close();
+					}
+				},
+			});
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      return NextResponse.json(
-        { error: `Tool runner error: ${errBody}`, code: "runner_error" },
-        { status: response.status }
-      );
-    }
+			return new Response(stream, {
+				headers: {
+					"Content-Type": "text/plain; charset=utf-8",
+					"Transfer-Encoding": "chunked",
+					"X-Accel-Buffering": "no",
+					"Cache-Control": "no-cache",
+				},
+			});
+		}
 
-    // Issue 7: Restore streaming for text/plain
-    if (resContentType.includes("text/plain")) {
-      return new Response(response.body, {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
-    }
-
-    const responseText = await response.text();
-    let data;
-    try {
-      // Issue 8: Wrap JSON.parse in try-catch
-      data = JSON.parse(responseText);
-    } catch {
-      return NextResponse.json(
-        { error: `Tool runner returned non-JSON: ${responseText.substring(0, 200)}`, code: "proxy_error" },
-        { status: 502 }
-      );
-    }
-    
-    return NextResponse.json(data.result !== undefined ? data.result : data);
-
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-
-    if (error.name === "AbortError") {
-      console.error(`[Tool Runner Proxy] 10-minute timeout for ${toolId}`);
-      return NextResponse.json(
-        { error: "Pipeline timed out after 10 minutes.", code: "timeout_10m" },
-        { status: 504 }
-      );
-    }
-
-    if (error.cause?.code === "ECONNREFUSED" || error.code === "ECONNREFUSED") {
-      console.error(`[Tool Runner Proxy] Runner offline at ${targetUrl}`);
-      return NextResponse.json(
-        {
-          error: "The Python tool runner is offline. Start it with: docker compose up",
-          code:  "runner_unavailable",
-        },
-        { status: 503 }
-      );
-    }
-
-    console.error(`[Tool Runner Proxy] Unhandled error for ${toolId}:`, error);
-    return NextResponse.json(
-      { error: `Connection failed: ${error.message || "Unknown error"}`, code: "proxy_error" },
-      { status: 500 }
-    );
-  }
+		// JSON responses
+		const data = await response.json();
+		if (data.result) {
+			return NextResponse.json(data.result);
+		}
+		return NextResponse.json(data);
+	} catch (error) {
+		console.error(`[Tool Runner] Failed to reach ${targetUrl}:`, error);
+		return NextResponse.json(
+			{
+				error:
+					"The Python tool runner is not running. Start it with: docker compose -f docker-compose.dev.yml up --build",
+				code: "runner_unavailable",
+			},
+			{ status: 503 }
+		);
+	}
 }
