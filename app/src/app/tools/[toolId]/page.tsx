@@ -1,5 +1,4 @@
 "use client";
-
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
@@ -20,21 +19,22 @@ import type { InputFieldConfig } from "@/types";
  * Contributors only need to create a ToolDefinition file in
  * src/lib/tools/<tool-id>.ts - this page handles the rest.
  */
+
 export default function DynamicToolPage() {
 	const params = useParams<{ toolId: string }>();
 	const tool = getToolById(params.toolId);
-
 	if (!tool || tool.status !== "active") {
 		notFound();
 	}
-
 	return <ToolPageContent toolId={tool.id} />;
 }
 
 function ToolPageContent({ toolId }: { toolId: string }) {
 	const tool = getToolById(toolId)!;
+
 	// Model is hardcoded per tool - no user selection
 	const model = tool.defaultModel || "llama-3.3-70b";
+
 	const [fields, setFields] = useState<Record<string, string>>(() => {
 		const initial: Record<string, string> = {};
 		for (const input of tool.inputs) {
@@ -66,7 +66,31 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	);
 
 	const { canExecute, getToolUsage, trackExecution, redirectToUpgrade } = useAuth();
-	const toolUsage = getToolUsage(tool.id);
+
+	// ── HYDRATION FIX ──────────────────────────────────────────────────────────
+	// getToolUsage reads from localStorage/cookies which don't exist on the server.
+	// We defer the real value until after mount so SSR and client agree on the
+	// initial render (both see the zero/default state), then the effect below
+	// runs on the client and updates to the real value.
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => {
+		setMounted(true);
+	}, []);
+
+	// Always call the hook (Rules of Hooks) — but only use its value post-mount.
+	const rawToolUsage = getToolUsage(tool.id);
+	const toolUsage = mounted
+		? rawToolUsage
+		: {
+				// Safe server-side defaults — matches what the server would render
+				used: 0,
+				limit: rawToolUsage.limit,  // limit is typically static, safe to use
+				remaining: rawToolUsage.limit,
+				limitReached: false,
+				plan: rawToolUsage.plan,    // plan is typically static too
+		  };
+	// ── END HYDRATION FIX ──────────────────────────────────────────────────────
+
 	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
 
 	// Show popup when limit is newly reached
@@ -142,9 +166,12 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 							</Button>
 						)}
 
-						{/* Usage indicator pill - per tool */}
+						{/* Usage indicator pill — suppressHydrationWarning because
+						    toolUsage.used/remaining come from localStorage which is
+						    unavailable during SSR, causing a first-render mismatch. */}
 						<div className="flex items-center gap-2">
 							<div
+								suppressHydrationWarning
 								className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
 									toolUsage.limitReached
 										? "bg-destructive/10 text-destructive"
@@ -154,6 +181,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								}`}
 							>
 								<span
+									suppressHydrationWarning
 									className={`h-1.5 w-1.5 rounded-full ${
 										toolUsage.limitReached
 											? "bg-destructive"
@@ -162,9 +190,14 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 												: "bg-primary"
 									}`}
 								/>
-								{toolUsage.used}/{toolUsage.limit} uses today
+								<span suppressHydrationWarning>
+									{toolUsage.used}/{toolUsage.limit} uses today
+								</span>
 							</div>
-							<span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<span
+								suppressHydrationWarning
+								className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+							>
 								{toolUsage.plan}
 							</span>
 						</div>
@@ -187,7 +220,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-						<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						<ResultViewer result={result} isLoading={isLoading} error={error} streaming uploadedImageSrc={fields['image'] ?? undefined} />
 					</div>
 				</div>
 			</ToolLayout>
@@ -277,7 +310,6 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 // ---------------------------------------------------------------------------
 // Generic input renderer - renders any InputFieldConfig
 // ---------------------------------------------------------------------------
-
 function InputField({
 	config,
 	value,
@@ -300,7 +332,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "textarea":
 			return (
 				<div className="space-y-2">
@@ -314,7 +345,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "select":
 			return (
 				<div className="space-y-2">
@@ -334,7 +364,6 @@ function InputField({
 					</div>
 				</div>
 			);
-
 		case "text":
 			return (
 				<div className="space-y-2">
@@ -348,7 +377,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "image":
 			return (
 				<div className="space-y-2">
@@ -376,7 +404,6 @@ function InputField({
 					</div>
 				</div>
 			);
-
 		default:
 			return null;
 	}

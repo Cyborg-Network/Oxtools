@@ -2,8 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system Chromium to automatically satisfy all shared Linux libraries
-RUN apt-get update && apt-get install -y chromium && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    chromium \
+    tesseract-ocr \
+    libtesseract-dev \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install base runner requirements
 COPY requirements.txt .
