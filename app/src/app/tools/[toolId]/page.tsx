@@ -78,9 +78,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	// initial render (both see the zero/default state), then the effect below
 	// runs on the client and updates to the real value.
 	const [mounted, setMounted] = useState(false);
-	useEffect(() => {
-		setMounted(true);
-	}, []);
+useEffect(() => setMounted(true), []);
 
 	// Always call the hook (Rules of Hooks) — but only use its value post-mount.
 	const rawToolUsage = getToolUsage(tool.id);
@@ -98,10 +96,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	// ── END HYDRATION FIX ──────────────────────────────────────────────────────
 
 	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-	// Defer localStorage-dependent rendering to prevent hydration mismatch.
-	// Server always renders the "Run" button; limit state only applies after mount.
-	const [mounted, setMounted] = useState(false);
-	useEffect(() => setMounted(true), []);
+
 
 	// Show popup when limit is newly reached
 	useEffect(() => {
