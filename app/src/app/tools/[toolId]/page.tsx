@@ -2,7 +2,7 @@
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
@@ -19,7 +19,6 @@ import type { InputFieldConfig } from "@/types";
  * Contributors only need to create a ToolDefinition file in
  * src/lib/tools/<tool-id>.ts - this page handles the rest.
  */
-
 
 export default function DynamicToolPage() {
 	const params = useParams<{ toolId: string }>();
@@ -78,7 +77,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	// initial render (both see the zero/default state), then the effect below
 	// runs on the client and updates to the real value.
 	const [mounted, setMounted] = useState(false);
-useEffect(() => setMounted(true), []);
+	useEffect(() => setMounted(true), []);
 
 	// Always call the hook (Rules of Hooks) — but only use its value post-mount.
 	const rawToolUsage = getToolUsage(tool.id);
@@ -91,12 +90,11 @@ useEffect(() => setMounted(true), []);
 				limit: rawToolUsage?.limit ?? 0,
 				remaining: rawToolUsage?.limit ?? 0,
 				limitReached: false,
-				plan: rawToolUsage?.plan ?? 'free',
-		  };
+				plan: rawToolUsage?.plan ?? "free",
+			};
 	// ── END HYDRATION FIX ──────────────────────────────────────────────────────
 
 	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-
 
 	// Show popup when limit is newly reached
 	useEffect(() => {
@@ -231,15 +229,15 @@ useEffect(() => setMounted(true), []);
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-					{/* Issue 19: derive the image src from whichever input has type==='image',
+						{/* Issue 19: derive the image src from whichever input has type==='image',
 					    instead of hardcoding fields['image']. */}
-					<ResultViewer
-						result={result}
-						isLoading={isLoading}
-						error={error}
-						streaming
-						uploadedImageSrc={uploadedImageSrc}
-					/>
+						<ResultViewer
+							result={result}
+							isLoading={isLoading}
+							error={error}
+							streaming
+							uploadedImageSrc={uploadedImageSrc}
+						/>
 					</div>
 				</div>
 			</ToolLayout>

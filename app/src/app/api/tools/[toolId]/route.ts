@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { createToolRoute } from "@/lib/create-tool-route";
 import { getToolById } from "@/lib/tools/registry";
 // Issue 5: maxDuration is set to 300s (5 minutes).
@@ -8,31 +8,31 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ toolId: string }> }
+	request: NextRequest,
+	{ params }: { params: Promise<{ toolId: string }> }
 ) {
-  const { toolId } = await params;
-  const tool = getToolById(toolId);
+	const { toolId } = await params;
+	const tool = getToolById(toolId);
 
-  if (!tool || tool.status !== "active") {
-    return NextResponse.json(
-      { error: `Tool "${toolId}" not found or not active.`, code: "not_found" },
-      { status: 404 }
-    );
-  }
+	if (!tool || tool.status !== "active") {
+		return NextResponse.json(
+			{ error: `Tool "${toolId}" not found or not active.`, code: "not_found" },
+			{ status: 404 }
+		);
+	}
 
-  if (tool.tier === "tier2") {
-    return proxyToToolRunner(request, toolId);
-  }
+	if (tool.tier === "tier2") {
+		return proxyToToolRunner(request, toolId);
+	}
 
-  const handler = createToolRoute({
-    requiredFields: tool.requiredFields,
-    buildSystemPrompt: tool.buildSystemPrompt,
-    buildUserPrompt: tool.buildUserPrompt,
-    defaultModel: tool.defaultModel,
-    errorMessage: `Failed to execute ${tool.name}`,
-  });
-  return handler(request);
+	const handler = createToolRoute({
+		requiredFields: tool.requiredFields,
+		buildSystemPrompt: tool.buildSystemPrompt,
+		buildUserPrompt: tool.buildUserPrompt,
+		defaultModel: tool.defaultModel,
+		errorMessage: `Failed to execute ${tool.name}`,
+	});
+	return handler(request);
 }
 
 async function proxyToToolRunner(request: NextRequest, toolId: string) {

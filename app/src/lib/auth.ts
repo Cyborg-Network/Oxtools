@@ -1,5 +1,3 @@
-
-
 // The Oxlo backend URL - same one oxlo-ui uses
 const OXLO_BACKEND_URL = process.env.NEXT_PUBLIC_OXLO_BACKEND_URL || "http://localhost:8000";
 
@@ -21,7 +19,7 @@ export interface UsageStatus {
 
 // Plan limits mapping
 const PLAN_LIMITS: Record<string, number> = {
-	free: 5, 
+	free: 5,
 	pro: 20,
 	premium: 100,
 };
