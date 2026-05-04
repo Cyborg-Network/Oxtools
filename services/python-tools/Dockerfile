@@ -1,7 +1,10 @@
-FROM python:3.12-slim
+# Use Debian 12 (Bookworm) to maintain Python 3.12 
+# while ensuring full, native Playwright OS support
+FROM python:3.12-bookworm
 
 WORKDIR /app
 
+# 1. Install Tesseract and OpenCV system dependencies
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -10,14 +13,14 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install base runner requirements
+# 2. Install base runner requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all tool directories
+# 4. Copy all tool directories
 COPY tools/ tools/
 
-# Install each tool's requirements.txt automatically
+# 5. Install each tool's requirements.txt automatically
 RUN for dir in tools/*/; do \
       req="${dir}requirements.txt"; \
       if [ -f "$req" ]; then \
@@ -26,10 +29,11 @@ RUN for dir in tools/*/; do \
       fi; \
     done
 
-# Install Playwright Chromium binary with the required deps
-RUN apt-get update && playwright install --with-deps chromium
+# 3. Install Playwright Chromium with dependencies
+# (This will now succeed smoothly because Bookworm is officially supported)
+RUN playwright install --with-deps chromium
 
-# Copy the runner
+# 6. Copy the runner script
 COPY runner.py .
 
 # Set tools directory

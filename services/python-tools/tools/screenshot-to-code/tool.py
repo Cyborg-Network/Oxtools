@@ -41,7 +41,7 @@ MAX_TOKENS_CODE    = 16000
 # NEW #8 — raised from 16. Judge now has room to reason before answering.
 # The system prompt instructs it to still end with just the digit,
 # but giving it 512 tokens lets it think through the candidates properly.
-MAX_TOKENS_JUDGE   = 512
+MAX_TOKENS_JUDGE   = 2048
 
 # ── Strategy swarm (unchanged from v8.0) ─────────────────────────────────────
 SWARM_STRATEGIES = [
