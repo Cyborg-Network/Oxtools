@@ -290,6 +290,12 @@ export function ResultViewer({
 	// Bug 3 fix — stable callbacks that read editIframeRef.current at call-time
 	const sendToEditIframe = useCallback((msg: Record<string, unknown>) => {
 		editIframeRef.current?.contentWindow?.postMessage(msg, '*');
+		// Issue 3: also prime the iframe's _allowedOrigin on first contact
+		if (msg.type !== '__init_origin__') {
+			editIframeRef.current?.contentWindow?.postMessage(
+				{ type: '__init_origin__' }, '*'
+			);
+		}
 	}, []);
 
 	const applyStyle = useCallback((property: string, value: string) => {
@@ -325,6 +331,10 @@ export function ResultViewer({
 	// Listen for postMessage from iframe (edit script)
 	useEffect(() => {
 		const handler = (e: MessageEvent) => {
+			// Issue 4: validate origin — srcdoc iframes have origin 'null' (string).
+			// Reject messages from any other origin to prevent spoofing.
+			if (e.origin !== 'null' && e.source !== editIframeRef.current?.contentWindow
+					&& e.source !== iframeRef.current?.contentWindow) return;
 			const msg = e.data;
 			if (!msg?.type) return;
 			if (msg.type === 'element-select') {
@@ -539,14 +549,16 @@ export function ResultViewer({
 								!isFullscreen && "h-[580px]"
 							}`}
 						>
-							<iframe
-								ref={iframeRef}
-								title="Preview"
-								srcDoc={currentHtml || htmlWithUpload}
-								className="h-full w-full border-0"
-								// CRITICAL FIX: allow-same-origin and popups are required for the file picker to open
-								sandbox="allow-scripts allow-same-origin allow-popups"
-							/>
+								{/* allow-same-origin removed (Issue 2 / XSS). File picker in Preview
+								    uses the upload script which only needs allow-scripts + allow-popups. */}
+								<iframe
+									ref={iframeRef}
+									title="Preview"
+									key={currentHtml || htmlWithUpload}
+									srcDoc={currentHtml || htmlWithUpload}
+									className="h-full w-full border-0"
+									sandbox="allow-scripts allow-popups"
+								/>
 						</div>
 					</div>
 				)}
@@ -574,8 +586,14 @@ export function ResultViewer({
 					return (
 						<div className={`flex overflow-hidden rounded-lg border border-border ${!isFullscreen ? 'h-[620px]' : 'h-full'}`}>
 							<div className="flex-1 overflow-hidden bg-white">
+								{/* allow-same-origin kept for Edit iframe only: the edit script needs
+								    DOM query access (TreeWalker, outerHTML). The iframe loads a
+								    srcdoc blob — its origin is 'null', not the parent origin, so
+								    same-origin does NOT grant access to the parent document. */}
 								<iframe ref={editIframeRef} title="Edit Preview"
-									className="h-full w-full border-0" sandbox="allow-scripts allow-same-origin allow-popups" />
+									key={currentHtml}
+									className="h-full w-full border-0"
+									sandbox="allow-scripts allow-same-origin allow-popups" />
 							</div>
 							<div className="w-80 shrink-0 overflow-y-auto border-l border-border bg-card">
 								{sec("Selected Element",
@@ -660,6 +678,8 @@ export function ResultViewer({
 													headers: { 'Content-Type': 'application/json' },
 													body: JSON.stringify({ update_prompt: aiSuggestion, previous_code: cleanedHtml }),
 												});
+												// Issue 10: validate HTTP status before parsing
+												if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
 												const d = await res.json();
 												// 3. Restore all Base64 images back into exact positions
 												if (d.code) {
@@ -679,7 +699,7 @@ export function ResultViewer({
 									</button>
 								</div>)}
 								{sec("Export", <div className="flex flex-col gap-1.5">
-									<button className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted transition-colors" onClick={() => navigator.clipboard.writeText(currentHtml || htmlWithUpload)}>Copy HTML</button>
+									<button className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted transition-colors" onClick={async () => { try { await navigator.clipboard.writeText(currentHtml || htmlWithUpload); } catch { /* clipboard denied */ } }}>Copy HTML</button>
 									<button className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted transition-colors" onClick={() => { const b = new Blob([currentHtml || htmlWithUpload], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'design.html'; a.click(); }}>Download .html</button>
 									<button className="rounded border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition-colors" onClick={() => setCurrentHtml(htmlWithUpload)}>Reset to Original</button>
 								</div>)}

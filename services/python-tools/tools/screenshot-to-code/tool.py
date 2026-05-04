@@ -319,6 +319,7 @@ def _call_api(
 
 
 def _clean_html(raw: str) -> str:
+    import re as _re
     raw = raw.strip()
     if raw.startswith("```"):
         lines = raw.split("\n")[1:]
@@ -330,12 +331,17 @@ def _clean_html(raw: str) -> str:
         idx = lower.find(tag)
         if idx != -1:
             raw = raw[idx:]
+            lower = raw.lower()
             break
-    if "</head>" in raw.lower():
-        insert_at = raw.lower().find("</head>")
-        raw = raw[:insert_at] + FONT_INJECT + raw[insert_at:]
-    elif "<head>" in raw.lower():
-        insert_at = raw.lower().find("<head>") + len("<head>")
+    # Issue 15: locate </head> safely — only match the real tag, not one inside
+    # a <script> block or string literal. Strategy: find the first </head> that
+    # appears BEFORE any <script> opener, which is where the real head closes.
+    script_start = lower.find("<script")
+    head_close   = lower.find("</head>")
+    if head_close != -1 and (script_start == -1 or head_close < script_start):
+        raw = raw[:head_close] + FONT_INJECT + raw[head_close:]
+    elif "<head>" in lower:
+        insert_at = lower.find("<head>") + len("<head>")
         raw = raw[:insert_at] + FONT_INJECT + raw[insert_at:]
     return raw
 
@@ -541,15 +547,18 @@ def _step3_judge(
                     logger.info("[Step 3] Judge selected candidate %d", idx + 1)
                     return idx
 
-        # Fallback: scan entire response for any digit
-        for ch in raw:
-            if ch.isdigit():
-                idx = int(ch) - 1
+        # Fallback: scan each line for a lone digit — avoids greedy char-by-char scan
+        # that would misread "2 wins because of 3 reasons" as candidate 3.
+        import re as _re
+        for line in raw.splitlines():
+            m = _re.match(r'^\s*(\d)\s*$', line.strip())
+            if m:
+                idx = int(m.group(1)) - 1
                 if 0 <= idx < len(candidates):
-                    logger.warning("[Step 3] Used fallback digit scan, selected %d", idx + 1)
+                    logger.warning("[Step 3] Used line-isolated fallback, selected %d", idx + 1)
                     return idx
 
-        logger.warning("[Step 3] Could not parse judge response, falling back to 0")
+        logger.warning("[Step 3] Could not parse judge response, falling back to candidate 0")
         return 0
 
     except Exception as exc:
@@ -720,9 +729,10 @@ async def _run_healing_loop(
     ref_image: Image.Image,
     image_b64: str,
     mime: str,
-) -> tuple[str, float, Optional[Image.Image]]:
+) -> tuple[str, float, Optional[Image.Image], int]:
     current_html = html
     ssim_score, rendered = await _step4_render_and_score(current_html, ref_image)
+    passes_run = 0
 
     for pass_num in range(1, MAX_HEALING_PASSES + 1):
         if ssim_score >= SSIM_SHIP_THRESHOLD:
@@ -759,12 +769,13 @@ async def _run_healing_loop(
             current_html = healed_html
             ssim_score   = new_ssim
             rendered     = new_rendered
+            passes_run   = pass_num
         else:
             logger.warning("[Heal] Pass %d REJECTED: %.1f%% → %.1f%% (regression), keeping previous",
                            pass_num, ssim_score, new_ssim)
             break
 
-    return current_html, ssim_score, rendered
+    return current_html, ssim_score, rendered, passes_run
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -957,7 +968,10 @@ def _inject_upload_script(html: str) -> str:
         img.style.maxWidth='100%';
         img.style.maxHeight='100%';
         // Immediately sync the updated DOM (with new Base64) to the React parent
-        window.parent.postMessage({type:'html-snapshot',html:document.documentElement.outerHTML},'*');
+        // Issue 3 fix: use restricted origin same as edit script
+        var _upOrigin = window.__allowedOrigin ||
+          (document.referrer ? new URL(document.referrer).origin : '*');
+        window.parent.postMessage({type:'html-snapshot',html:document.documentElement.outerHTML}, _upOrigin);
       });
     });
   }
@@ -1007,6 +1021,18 @@ def _inject_edit_script(html: str) -> str:
     script = """
 <script>
 (function(){
+  // Issue 3 fix: restrict postMessage to the parent origin, not wildcard.
+  // The parent sets window.__allowedOrigin via a one-time init message before
+  // any toolbar interaction.  Fall back to the referrer origin as a safe default.
+  var _allowedOrigin = window.__allowedOrigin ||
+    (document.referrer ? new URL(document.referrer).origin : '*');
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === '__init_origin__') {
+      _allowedOrigin = e.origin;
+      window.__allowedOrigin = e.origin;
+    }
+  }, { once: false });
+  function _postToParent(data) { window.parent.postMessage(data, _allowedOrigin); }
   var sel=null;
   document.addEventListener('click',function(e){
     // deselect previous
@@ -1015,12 +1041,11 @@ def _inject_edit_script(html: str) -> str:
     sel.setAttribute('data-edit-sel','1');
     sel.style.boxShadow='inset 0 0 0 2px #8b5cf6';
     var r=sel.getBoundingClientRect();
-    window.parent.postMessage({type:'element-select',
+    _postToParent({type:'element-select',
       tag:sel.tagName.toLowerCase(),
       classes:(sel.getAttribute('class')||''),
       text:(sel.textContent||'').trim().slice(0,300),
-      rect:{top:r.top,left:r.left,width:r.width,height:r.height}},
-    '*');
+      rect:{top:r.top,left:r.left,width:r.width,height:r.height}});
   },true);
   window.addEventListener('message',function(e){
     var m=e.data;if(!m||!m.type)return;
@@ -1031,7 +1056,7 @@ def _inject_edit_script(html: str) -> str:
       var firstText=walker.nextNode();
       if(firstText){firstText.nodeValue=m.value;}else{sel.textContent=m.value;}
     }
-    else if(m.type==='get-html'){window.parent.postMessage({type:'html-snapshot',html:document.documentElement.outerHTML},'*');}
+    else if(m.type==='get-html'){_postToParent({type:'html-snapshot',html:document.documentElement.outerHTML});}
     else if(m.type==='reset'){window.location.reload();}
   });
 })();
@@ -1088,7 +1113,7 @@ async def _run_pipeline(
             MAX_TOKENS_CODE, 0.0, 3,
         )
         html = _clean_html(raw)
-        html, ssim_score, rendered = await _run_healing_loop(
+        html, ssim_score, rendered, passes_run = await _run_healing_loop(
             client, html, ref_image, image_b64, mime
         )
         total_ms = int((time.perf_counter() - t0) * 1000)
@@ -1097,7 +1122,7 @@ async def _run_pipeline(
             "accuracy_score":     f"{ssim_score:.1f}%",
             "ssim_score":         f"{ssim_score:.1f}%",
             "generation_time_ms": total_ms,
-            "pass_count":         1,
+            "pass_count":         passes_run,
             "layout_json":        None,
             "ocr_anchored":       text_blocks is not None,
         }
@@ -1121,7 +1146,7 @@ async def _run_pipeline(
         logger.info("Judge selected candidate %d / %d", best_idx + 1, len(candidates))
 
     # STEP 5: Healing loop (3 passes, 92% threshold)
-    best_html, ssim_score, rendered = await _run_healing_loop(
+    best_html, ssim_score, rendered, passes_run = await _run_healing_loop(
         client, best_html, ref_image, image_b64, mime
     )
 
@@ -1139,7 +1164,7 @@ async def _run_pipeline(
         "accuracy_score":     f"{ssim_score:.1f}%",
         "ssim_score":         f"{ssim_score:.1f}%",
         "generation_time_ms": total_ms,
-        "pass_count":         1,
+        "pass_count":         passes_run,
         "layout_json":        None,
         "ocr_anchored":       text_blocks is not None,
         "sliced":             did_slice,

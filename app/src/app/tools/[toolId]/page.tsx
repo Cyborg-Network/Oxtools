@@ -82,12 +82,13 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const toolUsage = mounted
 		? rawToolUsage
 		: {
-				// Safe server-side defaults — matches what the server would render
+				// Issue 8: use optional chaining + safe defaults to prevent SSR TypeError
+				// when getToolUsage returns undefined or an incomplete object before hydration.
 				used: 0,
-				limit: rawToolUsage.limit,  // limit is typically static, safe to use
-				remaining: rawToolUsage.limit,
+				limit: rawToolUsage?.limit ?? 0,
+				remaining: rawToolUsage?.limit ?? 0,
 				limitReached: false,
-				plan: rawToolUsage.plan,    // plan is typically static too
+				plan: rawToolUsage?.plan ?? 'free',
 		  };
 	// ── END HYDRATION FIX ──────────────────────────────────────────────────────
 
@@ -220,7 +221,17 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-						<ResultViewer result={result} isLoading={isLoading} error={error} streaming uploadedImageSrc={fields['image'] ?? undefined} />
+					{/* Issue 19: derive the image src from whichever input has type==='image',
+					    instead of hardcoding fields['image']. */}
+					<ResultViewer
+						result={result}
+						isLoading={isLoading}
+						error={error}
+						streaming
+						uploadedImageSrc={
+							(fields[tool.inputs.find(i => i.type === 'image')?.key ?? 'image'] ?? undefined) as string | undefined
+						}
+					/>
 					</div>
 				</div>
 			</ToolLayout>

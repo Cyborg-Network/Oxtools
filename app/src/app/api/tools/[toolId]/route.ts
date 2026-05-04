@@ -3,7 +3,6 @@ import { createToolRoute } from "@/lib/create-tool-route";
 import { getToolById } from "@/lib/tools/registry";
 import http from "node:http";
 
-// ─── No execution time cap — pipeline runs as long as it needs ───────────────
 export const maxDuration = 600;
 export const dynamic = "force-dynamic";
 
@@ -35,20 +34,7 @@ export async function POST(
   return handler(request);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WHY node:http INSTEAD OF fetch()
-//
-// Next.js 15/16 App Router patches global fetch() with its own caching layer.
-// That patched fetch does NOT support the Undici `dispatcher` option — passing
-// a custom Agent throws UND_ERR_INVALID_ARG: "invalid onRequestStart method".
-// The patched fetch also has an internal 5-minute (300s) headers timeout baked
-// in that cannot be overridden from userland.
-//
-// node:http.request() bypasses all of this. It is the raw Node.js primitive,
-// gives us direct socket timeout control, and needs zero extra dependencies.
-// We set timeout to 36000s (10 hours) — the pipeline itself will finish long
-// before that. The AbortController at 3600s is the actual safety net.
-// ─────────────────────────────────────────────────────────────────────────────
+
 function proxyViaNodeHttp(
   targetUrl: string,
   body: string,
@@ -68,9 +54,7 @@ function proxyViaNodeHttp(
           "Content-Type":   contentType,
           "Content-Length": Buffer.byteLength(body),
         },
-        // 1 hour socket timeout — pipeline will always finish before this.
-        // This exists only to prevent zombie connections if the Docker
-        // container crashes mid-run without sending a response.
+        
         timeout: 3_600_000,
       },
       (res) => {
@@ -139,7 +123,8 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
     }
 
     const data = JSON.parse(response.body);
-    return NextResponse.json(data.result ?? data);
+    
+    return NextResponse.json(data.result !== undefined ? data.result : data);
 
   } catch (error: any) {
     clearTimeout(timeoutId);
