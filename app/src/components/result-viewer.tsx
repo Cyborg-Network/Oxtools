@@ -246,7 +246,7 @@ function SideBySideComparison({
 				<iframe
 					srcDoc={generatedCode}
 					className="flex-1 border-0"
-					sandbox="allow-scripts allow-same-origin"
+					sandbox="allow-scripts"
 					title="Generated output"
 				/>
 			</div>
@@ -265,7 +265,8 @@ export function ResultViewer({
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const editIframeRef = useRef<HTMLIFrameElement>(null);
 	const editHtmlSetRef = useRef(false);
-	const snapshotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const snapshotTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(() => { return () => { if (snapshotTimeoutRef.current) clearTimeout(snapshotTimeoutRef.current); }; }, []);
 	const [copiedAll, setCopiedAll] = useState(false);
 	const [activeTab, setActiveTab] = useState<"preview" | "edit" | "compare" | "code">("preview");
 	const [isFullscreen, setIsFullscreen] = useState(false);
@@ -483,7 +484,7 @@ export function ResultViewer({
 		? Object.fromEntries(
 				Object.entries(parsedJson)
 					.filter(([k]) => k !== "code")
-					.map(([k, v]) => [k, String(v)])
+					.map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)])
 		  )
 		: {};
 
@@ -572,7 +573,6 @@ export function ResultViewer({
 								<iframe
 									ref={iframeRef}
 									title="Preview"
-									key={currentHtml || htmlWithUpload}
 									srcDoc={currentHtml || htmlWithUpload}
 									className="h-full w-full border-0"
 									sandbox="allow-scripts allow-popups"
@@ -609,12 +609,11 @@ export function ResultViewer({
 								    srcdoc blob — its origin is 'null', not the parent origin, so
 								    same-origin does NOT grant access to the parent document. */}
 								<iframe ref={editIframeRef} title="Edit Preview"
-									key={currentHtml}
 									onLoad={() => {
 										editIframeRef.current?.contentWindow?.postMessage({ type: '__init_origin__' }, '*');
 									}}
 									className="h-full w-full border-0"
-									sandbox="allow-scripts allow-same-origin allow-popups" />
+									sandbox="allow-scripts allow-popups" />
 							</div>
 							<div className="w-80 shrink-0 overflow-y-auto border-l border-border bg-card">
 								{sec("Selected Element",
@@ -774,7 +773,7 @@ export function ResultViewer({
 									{Object.entries(meta).map(([k, v]) => (
 										<div key={k} className="bg-background px-4 py-3">
 											<p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{k.replace(/_/g, " ")}</p>
-											<p className="mt-0.5 font-mono text-sm text-foreground">{String(v)}</p>
+											<p className="mt-0.5 font-mono text-sm text-foreground">{typeof v === "object" ? JSON.stringify(v) : String(v)}</p>
 										</div>
 									))}
 								</div>

@@ -2,7 +2,7 @@
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
@@ -51,7 +51,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const { result, isLoading, error, execute, setResult } = useToolExecution({
 		apiEndpoint: `${apiBase}/${tool.id}`,
 		toolId: tool.id,
-		timeoutMs: tool.timeoutMs,
+		...(tool.timeoutMs && { timeoutMs: tool.timeoutMs }),
 	});
 
 	const setField = useCallback((key: string, value: string) => {
@@ -122,6 +122,11 @@ useEffect(() => setMounted(true), []);
 
 	// Check if all required fields are filled
 	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
+
+	const uploadedImageSrc = useMemo(() => {
+		const imageKey = tool.inputs.find((i) => i.type === "image")?.key;
+		return imageKey ? fields[imageKey] : undefined;
+	}, [tool.inputs, fields]);
 
 	return (
 		<>
@@ -233,10 +238,7 @@ useEffect(() => setMounted(true), []);
 						isLoading={isLoading}
 						error={error}
 						streaming
-						uploadedImageSrc={(() => {
-							const imageKey = tool.inputs.find(i => i.type === 'image')?.key;
-							return imageKey ? fields[imageKey] : undefined;
-						})()}
+						uploadedImageSrc={uploadedImageSrc}
 					/>
 					</div>
 				</div>

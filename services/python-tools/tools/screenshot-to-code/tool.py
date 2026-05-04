@@ -29,7 +29,6 @@ MANIFEST = {
 COMPRESS_MAX_PX       = 1920
 COMPRESS_JPEG_QUALITY = 90
 
-MODEL_EXTRACTOR = "kimi-k2.6"
 MODEL_CODER = "kimi-k2.5"
 MODEL_JUDGE = "kimi-k2.5"
 
@@ -108,36 +107,6 @@ FONT_INJECT = (
 )
 
 # ─── Step 1 — Spatial Extractor system (iterative edits only) ─────────────────
-EXTRACTOR_SYSTEM = """You are an elite Computer Vision layout extractor.
-Map this UI screenshot into a strict JSON layout array.
-
-For each visible element output an object with these fields (all required):
-{
-  "id":        "unique-slug",
-  "type":      "container" | "text" | "button" | "input" | "image" | "icon" | "divider" | "list-item",
-  "tag":       "div" | "h1" | "p" | "button" | "input" | "img" | "svg" | "hr" | "a" | "li" | "span" | …,
-  "layout":    "flex-row" | "flex-col" | "grid-N" | "block" | "absolute",
-  "x_pct":     0-100,
-  "y_pct":     0-100,
-  "w_pct":     0-100,
-  "h_pct":     0-100,
-  "bg_color":  "#rrggbb" | "transparent",
-  "text_color":"#rrggbb" | null,
-  "font_size_px": number | null,
-  "font_weight":  400 | 500 | 600 | 700 | null,
-  "border_radius_px": number | null,
-  "text_content": "exact visible string" | null,
-  "href_visible": "domain string if link" | null,
-  "children":  [ …nested objects… ] | []
-}
-
-RULES:
-- COPY TEXT EXACTLY. Every string must be a verbatim copy of visible text. No placeholders, no guesses.
-- For list-heavy UIs: extract the header in full, then ALL visible list items — do not skip any readable row.
-- Use exact hex colors sampled from the screenshot. No approximations.
-- Maintain full structural nesting.
-- DO NOT write HTML. DO NOT add commentary.
-- Output ONLY a raw valid JSON array starting with [."""
 
 EXTRACTOR_USER = (
     "Extract the COMPLETE JSON layout from this screenshot. "
@@ -302,7 +271,7 @@ def _call_api(
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                timeout=600.0,  # NEW #10: was 180s
+                timeout=float(os.getenv("OXLO_API_TIMEOUT", "600.0")),  # NEW #10: was 180s
             )
             return resp.choices[0].message.content or ""
 
@@ -1001,6 +970,7 @@ def _inject_edit_script(html: str) -> str:
   var _allowedOrigin = window.__allowedOrigin ||
     (document.referrer ? new URL(document.referrer).origin : '*');
   window.addEventListener('message', function(e) {
+    if (e.origin !== window.location.origin) return;
     if (e.data && e.data.type === '__init_origin__') {
       _allowedOrigin = e.origin;
       window.__allowedOrigin = e.origin;
@@ -1022,6 +992,7 @@ def _inject_edit_script(html: str) -> str:
       rect:{top:r.top,left:r.left,width:r.width,height:r.height}});
   },true);
   window.addEventListener('message',function(e){
+    if (e.origin !== window.location.origin) return;
     var m=e.data;if(!m||!m.type)return;
     if(m.type==='apply-style'&&sel){sel.style[m.property]=m.value;}
     else if(m.type==='apply-text'&&sel){

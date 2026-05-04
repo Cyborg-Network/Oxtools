@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 3. Install Playwright Chromium with dependencies
+# (Installed explicitly here to cache the 300MB+ browser before copying tool source code)
+RUN pip install --no-cache-dir playwright==1.44.0 && playwright install --with-deps chromium
+
 # 4. Copy all tool directories
 COPY tools/ tools/
 
@@ -29,9 +33,7 @@ RUN for dir in tools/*/; do \
       fi; \
     done
 
-# 3. Install Playwright Chromium with dependencies
-# (This will now succeed smoothly because Bookworm is officially supported)
-RUN playwright install --with-deps chromium
+
 
 # 6. Copy the runner script
 COPY runner.py .

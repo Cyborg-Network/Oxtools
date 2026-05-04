@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createToolRoute } from "@/lib/create-tool-route";
 import { getToolById } from "@/lib/tools/registry";
-// Issue 5: maxDuration is set to 600s (10 minutes).
+// Issue 5: maxDuration is set to 300s (5 minutes).
 // We align the AbortController timeout to match this limit exactly,
 // so that requests gracefully abort rather than hanging when Vercel kills the function.
-export const maxDuration = 600;
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 export async function POST(
@@ -43,12 +43,12 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
 		const body = await request.text();
 		const contentType = request.headers.get("content-type") || "application/json";
 
-		// 10 minute timeout — security scans with LLM retries can take 5-10 min
+		// 5 minute timeout — security scans with LLM retries can take 5 min
 		const response = await fetch(targetUrl, {
 			method: "POST",
 			headers: { "Content-Type": contentType },
 			body,
-			signal: AbortSignal.timeout(600_000),
+			signal: AbortSignal.timeout(300_000),
 		});
 
 		if (!response.ok) {
