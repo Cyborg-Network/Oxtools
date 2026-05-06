@@ -46,6 +46,12 @@ function MermaidViewer({ chart }: { chart: string }) {
 		};
 	}, [chart]);
 
+	useEffect(() => {
+		if (containerRef.current) {
+			containerRef.current.innerHTML = svg;
+		}
+	}, [svg]);
+
 	if (error) {
 		return (
 			<div className="my-4 rounded-md border border-destructive/20 bg-destructive/10 p-4 text-xs font-mono text-destructive overflow-auto">
@@ -56,12 +62,10 @@ function MermaidViewer({ chart }: { chart: string }) {
 		);
 	}
 
-	// biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid returns trusted SVG markup for display
 	return (
 		<div
 			ref={containerRef}
 			className="mermaid-wrapper my-6 flex items-center justify-center overflow-auto rounded-lg border border-border bg-zinc-950 dark:bg-zinc-900 p-6"
-			dangerouslySetInnerHTML={{ __html: svg }}
 		/>
 	);
 }
@@ -523,7 +527,7 @@ export function ResultViewer({
 							</span>
 						</div>
 						<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
-							{pipelineLogsDisplay.split("\n").map((line, i) => {
+							{pipelineLogsDisplay.split("\n").map((line, _i) => {
 								if (!line.trim() || line === ".") return null;
 								let textColor = "text-zinc-400";
 								if (line.startsWith("[")) {
