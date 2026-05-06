@@ -14,6 +14,40 @@ import { getToolById } from "@/lib/tools/registry";
 import { useAuth } from "@/providers/auth-provider";
 import type { InputFieldConfig } from "@/types";
 
+// Helper function to compress images using canvas
+async function compressImage(base64: string, quality: number = 0.8): Promise<string> {
+	return new Promise((resolve) => {
+		const img = new Image();
+		img.onload = () => {
+			const canvas = document.createElement("canvas");
+			let width = img.width;
+			let height = img.height;
+			
+			// Scale down if image is too large (max 2000px on longest side)
+			const maxDim = 2000;
+			if (width > maxDim || height > maxDim) {
+				const ratio = Math.min(maxDim / width, maxDim / height);
+				width = Math.floor(width * ratio);
+				height = Math.floor(height * ratio);
+			}
+			
+			canvas.width = width;
+			canvas.height = height;
+			
+			const ctx = canvas.getContext("2d");
+			if (ctx) {
+				ctx.drawImage(img, 0, 0, width, height);
+				const compressed = canvas.toDataURL("image/jpeg", quality);
+				resolve(compressed);
+			} else {
+				resolve(base64);
+			}
+		};
+		img.onerror = () => resolve(base64);
+		img.src = base64;
+	});
+}
+
 /**
  * Dynamic tool page - renders any tool from the registry.
  *
@@ -47,7 +81,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	// Tier2 tools MUST bypass Next.js proxy buffering to prevent silent timeouts on long executions
 	const runnerUrl = process.env.NEXT_PUBLIC_TOOL_RUNNER_URL || "http://localhost:9080";
 	const apiBase = tool.tier === "tier2" ? `${runnerUrl}/api/tools` : "/api/tools";
-	const { result, isLoading, error, execute, setResult } = useToolExecution({
+	const { result, isLoading, error, execute, reset, setResult } = useToolExecution({
 		apiEndpoint: `${apiBase}/${tool.id}`,
 		toolId: tool.id,
 	});
@@ -71,6 +105,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const { canExecute, getToolUsage, trackExecution, redirectToUpgrade } = useAuth();
 	const toolUsage = getToolUsage(tool.id);
 	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+	const [hasExecuted, setHasExecuted] = useState(false);
 	// Defer localStorage-dependent rendering to prevent hydration mismatch.
 	// Server always renders the "Run" button; limit state only applies after mount.
 	const [mounted, setMounted] = useState(false);
@@ -93,6 +128,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		for (const field of tool.requiredFields) {
 			if (!fields[field]?.trim()) return;
 		}
+		setHasExecuted(true);
 		execute({ ...fields, model });
 		// Track usage for THIS tool
 		trackExecution(tool.id);
@@ -372,12 +408,34 @@ function InputField({
 						<input
 							type="file"
 							accept="image/*"
-							onChange={(e) => {
+							onChange={async (e) => {
 								const file = e.target.files?.[0];
 								if (!file) return;
+								
+								// Validate file size (max 5MB raw)
+								const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+								if (file.size > MAX_FILE_SIZE) {
+									alert(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB. Please compress or resize the image.`);
+									return;
+								}
+								
 								const reader = new FileReader();
-								reader.onloadend = () => {
-									onChange(reader.result as string); // base64 string
+								reader.onloadend = async () => {
+									let base64 = reader.result as string;
+									
+									// If image is still large when base64, try to compress it
+									if (base64.length > 3 * 1024 * 1024) {
+										// Attempt compression via canvas
+										base64 = await compressImage(base64);
+									}
+									
+									// Final validation
+									if (base64.length > 4 * 1024 * 1024) {
+										alert("Image data is still too large after compression. Please use a smaller image.");
+										return;
+									}
+									
+									onChange(base64);
 								};
 								reader.readAsDataURL(file);
 							}}
@@ -389,6 +447,7 @@ function InputField({
 							</div>
 						)}
 					</div>
+					<p className="text-xs text-muted-foreground">{config.helperText}</p>
 				</div>
 			);
 

@@ -5,7 +5,6 @@ import {
 	AlertCircle,
 	Check,
 	Copy,
-	Download,
 	ExternalLink,
 	Key,
 	Lock,
@@ -17,6 +16,7 @@ import mermaid from "mermaid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ColorPaletteViewer } from "./color-palette-viewer";
 
 mermaid.initialize({
 	startOnLoad: false,
@@ -215,6 +215,7 @@ export function ResultViewer({
 	onOpenSettings,
 }: ResultViewerProps) {
 	const [copiedAll, setCopiedAll] = useState(false);
+	const [copiedExtracted, setCopiedExtracted] = useState(false);
 	const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
 
 	const handleCopyAll = useCallback(async () => {
@@ -223,17 +224,11 @@ export function ResultViewer({
 		setTimeout(() => setCopiedAll(false), 2000);
 	}, [result]);
 
-	const handleDownload = useCallback(() => {
-		const blob = new Blob([result], { type: "text/markdown;charset=utf-8" });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement("a");
-		link.href = url;
-		link.download = `devkernel-ai-result-${Date.now()}.md`;
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		URL.revokeObjectURL(url);
-	}, [result]);
+	const handleCopyExtractedAll = useCallback(async (colors: string[]) => {
+		await navigator.clipboard.writeText(colors.join("\n"));
+		setCopiedExtracted(true);
+		setTimeout(() => setCopiedExtracted(false), 2000);
+	}, []);
 
 	if (error) {
 		// Normalize string errors to ToolError shape
@@ -273,45 +268,152 @@ export function ResultViewer({
 	}
 
 	let parsedJson: { code?: string; [key: string]: any } | null = null;
-	let displayMarkdown = result;
+	let displayMarkdown = "";
 	let pipelineLogs = "";
 	let isReportStarted = false;
+	let extractedColorsPreview: string[] = [];
+
+	let outputContent = result;
+
+	const extractStructuredBlock = (text: string, startMarker: string, endMarker?: string) => {
+		const startIndex = text.indexOf(startMarker);
+		if (startIndex === -1) return null;
+
+		const startContentIndex = startIndex + startMarker.length;
+		if (endMarker) {
+			const endIndex = text.indexOf(endMarker, startContentIndex);
+			return text.slice(startContentIndex, endIndex === -1 ? undefined : endIndex).trim();
+		}
+
+		return text.slice(startContentIndex).trim();
+	};
+
+	const extractBalancedJson = (text: string) => {
+		const startIndex = text.indexOf("{");
+		if (startIndex === -1) return null;
+
+		let depth = 0;
+		let inString = false;
+		let escaped = false;
+
+		for (let index = startIndex; index < text.length; index += 1) {
+			const character = text[index];
+
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+
+			if (character === "\\") {
+				escaped = true;
+				continue;
+			}
+
+			if (character === '"') {
+				inString = !inString;
+				continue;
+			}
+
+			if (inString) continue;
+
+			if (character === "{") depth += 1;
+			if (character === "}") {
+				depth -= 1;
+				if (depth === 0) {
+					return text.slice(startIndex, index + 1);
+				}
+			}
+		}
+
+		return null;
+	};
 
 	if (result) {
-		if (result.includes("---REPORT_START---")) {
+		// Check for output markers (both old and new format)
+		if (result.includes("---OUTPUT_START---")) {
+			const structuredBlock = extractStructuredBlock(result, "---OUTPUT_START---", "---OUTPUT_END---");
+			if (structuredBlock) {
+				outputContent = structuredBlock;
+			} else {
+				const parts = result.split("---OUTPUT_START---");
+				pipelineLogs = parts[0].trim();
+				outputContent = parts[1] || "";
+			}
+			isReportStarted = true;
+		} else if (result.includes("---REPORT_START---")) {
 			const parts = result.split("---REPORT_START---");
 			pipelineLogs = parts[0].trim();
-			displayMarkdown = parts[1] || "";
+			outputContent = parts[1] || "";
 			isReportStarted = true;
 		} else if (streaming && isLoading) {
-			// If we haven't hit the report marker yet, everything is logs.
+			// If we haven't hit the output marker yet, everything is logs.
 			pipelineLogs = result.trim();
-			displayMarkdown = "";
+			outputContent = "";
 		}
 	}
 
-	if (result) {
+	// Extract early KMeans colors from logs (arrives before OUTPUT_START)
+	const extractedSource = pipelineLogs || result || "";
+	if (extractedSource.includes("---EXTRACTED_COLORS_START---")) {
 		try {
-			const trimmed = result.trim();
-			if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-				const parsed = JSON.parse(trimmed);
-				if (typeof parsed.code === "string") {
+			// Prefer regex so we survive streaming chunk boundaries / extra whitespace.
+			const match = extractedSource.match(
+				/---EXTRACTED_COLORS_START---\s*([\s\S]*?)\s*---EXTRACTED_COLORS_END---/m
+			);
+			if (match?.[1]) {
+				const parsed = JSON.parse(match[1].trim());
+				if (Array.isArray(parsed?.extractedColors)) extractedColorsPreview = parsed.extractedColors;
+			}
+		} catch {
+			// ignore - preview is optional
+		}
+	}
+
+	// Hide the extracted-colors JSON block from the logs viewer (UI already shows swatches)
+	const pipelineLogsDisplay = pipelineLogs
+		? pipelineLogs.replace(
+				/---EXTRACTED_COLORS_START---[\s\S]*?---EXTRACTED_COLORS_END---\s*/gm,
+				""
+			)
+		: pipelineLogs;
+
+	if (outputContent) {
+		try {
+			const trimmed = outputContent.trim();
+			const jsonCandidate =
+				(trimmed.startsWith("{") && trimmed.endsWith("}")) ? trimmed : extractBalancedJson(trimmed);
+			if (jsonCandidate) {
+				const parsed = JSON.parse(jsonCandidate);
+				// Check for color palette JSON
+				if (
+					parsed.palette &&
+					typeof parsed.palette === "object" &&
+					parsed.roles &&
+					typeof parsed.roles === "object"
+				) {
+					parsedJson = parsed;
+					displayMarkdown = ""; // Don't show markdown for palettes
+				} else if (typeof parsed.code === "string") {
 					parsedJson = parsed;
 					displayMarkdown = `\`\`\`html\n${parsed.code}\n\`\`\``;
 				}
 			}
 		} catch (_e) {
-			// Ignore parsing errors
+			// Ignore parsing errors - fall back to markdown rendering
+			displayMarkdown = outputContent;
 		}
 
 		// Fallback: Check if the result embeds a standalone HTML block in markdown
 		if (!parsedJson) {
 			const htmlBlockRegex = /```(?:html)?\s*(<!DOCTYPE html>[\s\S]*?<html[\s\S]*?)```/i;
-			const match = result.trim().match(htmlBlockRegex);
+			const match = outputContent.trim().match(htmlBlockRegex);
 			if (match?.[1]) {
 				parsedJson = { code: match[1] };
-			} else if (result.trim().startsWith("<!DOCTYPE html>") || result.trim().startsWith("<html")) {
-				parsedJson = { code: result.trim() };
+			} else if (outputContent.trim().startsWith("<!DOCTYPE html>") || outputContent.trim().startsWith("<html")) {
+				parsedJson = { code: outputContent.trim() };
+			} else {
+				// Not HTML or JSON, treat as markdown
+				displayMarkdown = outputContent;
 			}
 		}
 	}
@@ -323,8 +425,69 @@ export function ResultViewer({
 
 	return (
 		<div className="space-y-6">
+			{/* Early extracted-colors preview (shows before final palette) */}
+			{extractedColorsPreview.length > 0 && (
+				<Card className="border-border/50 overflow-hidden">
+					<CardContent className="p-0">
+						<div className="flex items-center justify-between gap-3 border-b border-border/40 bg-muted/20 px-5 py-4">
+							<div className="min-w-0">
+								<div className="flex items-center gap-2">
+									<h4 className="text-base font-semibold">Extracted Colors</h4>
+									<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+										{extractedColorsPreview.length}
+									</span>
+								</div>
+								<p className="mt-0.5 text-xs text-muted-foreground">
+									{isLoading ? "Showing fast extraction while refining palette…" : "Ready"}
+								</p>
+							</div>
+
+							<div className="flex shrink-0 items-center gap-2">
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => handleCopyExtractedAll(extractedColorsPreview)}
+									className="h-8 text-xs"
+								>
+									{copiedExtracted ? (
+										<Check className="h-3.5 w-3.5 mr-1" />
+									) : (
+										<Copy className="h-3.5 w-3.5 mr-1" />
+									)}
+									Copy all
+								</Button>
+							</div>
+						</div>
+
+						<div className="px-5 py-5">
+							<div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+								{extractedColorsPreview.map((color) => (
+									<button
+										key={color}
+										type="button"
+										className="group text-left"
+										onClick={() => navigator.clipboard.writeText(color)}
+										title="Click to copy"
+									>
+										<div
+											className="w-full aspect-square rounded-xl border-2 border-border/50 shadow-sm transition-all group-hover:shadow-md group-hover:border-primary"
+											style={{ backgroundColor: color }}
+										/>
+										<div className="mt-2">
+											<code className="block truncate rounded bg-muted px-2 py-1 text-[11px] font-mono text-muted-foreground group-hover:text-foreground">
+												{color}
+											</code>
+										</div>
+									</button>
+								))}
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
 			{/* Pipeline Logs Viewer */}
-			{pipelineLogs && (
+			{pipelineLogsDisplay && (
 				<Card className="border-primary/20 bg-primary/[0.02] overflow-hidden">
 					<CardContent className="p-0">
 						<div className="flex items-center gap-3 border-b border-border/40 bg-muted/30 px-4 py-3">
@@ -343,7 +506,7 @@ export function ResultViewer({
 							</span>
 						</div>
 						<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
-							{pipelineLogs.split("\n").map((line, i) => {
+							{pipelineLogsDisplay.split("\n").map((line, i) => {
 								if (!line.trim() || line === ".") return null;
 								let textColor = "text-zinc-400";
 								if (line.startsWith("[")) {
@@ -383,8 +546,62 @@ export function ResultViewer({
 				</Card>
 			)}
 
-			{/* Final Report Viewer */}
-			{(isReportStarted || displayMarkdown) && (
+			{/* If result contains an image or extracted colors but no full palette,
+			    render an interactive preview so the uploaded image can be inspected locally. */}
+			{(() => {
+				let previewData: any = null;
+				try {
+					const candidate = outputContent ? JSON.parse(outputContent.trim()) : null;
+					if (candidate && (candidate.image || Array.isArray(candidate.extractedColors))) {
+						previewData = candidate;
+					}
+				} catch {
+					// ignore parse errors
+				}
+
+				if (previewData) {
+					return (
+						<Card className="overflow-hidden relative">
+							<CardContent className="pt-6 pb-6 relative">
+								<ColorPaletteViewer data={previewData} enableHover={true} />
+							</CardContent>
+						</Card>
+					);
+				}
+
+				// Fallback to the regular palette viewer when full palette + roles exist
+				if (parsedJson?.palette && parsedJson?.roles) {
+					return (
+						<Card className="overflow-hidden relative">
+							<div
+								className="absolute top-3 right-3 flex items-center gap-2 z-10"
+								style={{ opacity: 1 }}
+							>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={handleCopyAll}
+									className="h-8 text-xs bg-background/80 backdrop-blur-sm"
+								>
+									{copiedAll ? (
+										<Check className="h-3.5 w-3.5 mr-1" />
+									) : (
+										<Copy className="h-3.5 w-3.5 mr-1" />
+									)}
+									Copy
+								</Button>
+							</div>
+							<CardContent className="pt-10 pb-6 relative">
+								<ColorPaletteViewer data={parsedJson as any} enableHover={true} />
+							</CardContent>
+						</Card>
+					);
+				}
+				return null;
+			})()}
+
+			{/* Final Report Viewer - Shows when palette/roles DON'T exist */}
+			{(isReportStarted || displayMarkdown) && !(parsedJson?.palette && parsedJson?.roles) && (
 				<Card className="overflow-hidden relative">
 					<div
 						className="absolute top-3 right-3 flex items-center gap-2 z-10"
@@ -402,15 +619,6 @@ export function ResultViewer({
 								<Copy className="h-3.5 w-3.5 mr-1" />
 							)}
 							Copy
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={handleDownload}
-							className="h-8 text-xs bg-background/80 backdrop-blur-sm"
-						>
-							<Download className="h-3.5 w-3.5 mr-1" />
-							Download
 						</Button>
 					</div>
 
@@ -440,6 +648,7 @@ export function ResultViewer({
 					)}
 
 					<CardContent className="pt-10 pb-6 relative">
+						{/* HTML Preview / Markdown */}
 						<article
 							className={[
 								"prose prose-sm dark:prose-invert max-w-none",
