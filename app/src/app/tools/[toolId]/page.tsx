@@ -2,6 +2,7 @@
 
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
+import NextImage from "next/image";
 import { notFound, useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
@@ -17,7 +18,7 @@ import type { InputFieldConfig } from "@/types";
 // Helper function to compress images using canvas
 async function compressImage(base64: string, quality: number = 0.8): Promise<string> {
 	return new Promise((resolve) => {
-		const img = new Image();
+		const img = document.createElement("img");
 		img.onload = () => {
 			const canvas = document.createElement("canvas");
 			let width = img.width;
@@ -81,7 +82,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	// Tier2 tools MUST bypass Next.js proxy buffering to prevent silent timeouts on long executions
 	const runnerUrl = process.env.NEXT_PUBLIC_TOOL_RUNNER_URL || "http://localhost:9080";
 	const apiBase = tool.tier === "tier2" ? `${runnerUrl}/api/tools` : "/api/tools";
-	const { result, isLoading, error, execute, reset, setResult } = useToolExecution({
+	const { result, isLoading, error, execute, setResult } = useToolExecution({
 		apiEndpoint: `${apiBase}/${tool.id}`,
 		toolId: tool.id,
 	});
@@ -105,7 +106,6 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const { canExecute, getToolUsage, trackExecution, redirectToUpgrade } = useAuth();
 	const toolUsage = getToolUsage(tool.id);
 	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-	const [hasExecuted, setHasExecuted] = useState(false);
 	// Defer localStorage-dependent rendering to prevent hydration mismatch.
 	// Server always renders the "Run" button; limit state only applies after mount.
 	const [mounted, setMounted] = useState(false);
@@ -128,7 +128,6 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		for (const field of tool.requiredFields) {
 			if (!fields[field]?.trim()) return;
 		}
-		setHasExecuted(true);
 		execute({ ...fields, model });
 		// Track usage for THIS tool
 		trackExecution(tool.id);
@@ -171,6 +170,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								<p className="text-xs text-muted-foreground">
 									Upgrade your plan for more daily executions.{" "}
 									<button
+										type="button"
 										onClick={redirectToUpgrade}
 										className="text-primary hover:underline underline-offset-2"
 									>
@@ -227,6 +227,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for
 								this tool today.{" "}
 								<button
+									type="button"
 									onClick={redirectToUpgrade}
 									className="underline underline-offset-2 hover:text-amber-400"
 								>
@@ -249,6 +250,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					<div className="relative mx-4 w-full max-w-md rounded-2xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
 						{/* Close button */}
 						<button
+							type="button"
 							onClick={() => setShowUpgradeDialog(false)}
 							className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 						>
@@ -415,7 +417,9 @@ function InputField({
 								// Validate file size (max 5MB raw)
 								const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 								if (file.size > MAX_FILE_SIZE) {
-									alert(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB. Please compress or resize the image.`);
+									alert(
+										`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB. Please compress or resize the image.`
+									);
 									return;
 								}
 								
@@ -431,7 +435,9 @@ function InputField({
 									
 									// Final validation
 									if (base64.length > 4 * 1024 * 1024) {
-										alert("Image data is still too large after compression. Please use a smaller image.");
+										alert(
+											"Image data is still too large after compression. Please use a smaller image."
+										);
 										return;
 									}
 									
@@ -443,7 +449,7 @@ function InputField({
 						/>
 						{value && (
 							<div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border">
-								<img src={value} alt="Preview" className="h-full w-full object-cover" />
+									<NextImage src={value} alt="Preview" fill className="object-cover" unoptimized />
 							</div>
 						)}
 					</div>
@@ -538,7 +544,7 @@ function InputField({
 											)
 										);
 										const valid = Array.from(files).filter((f) => {
-											const ext = "." + f.name.split(".").pop()?.toLowerCase();
+											const ext = `.${f.name.split(".").pop()?.toLowerCase()}`;
 											const p = f.webkitRelativePath || f.name;
 											if (
 												p.includes("__pycache__") ||

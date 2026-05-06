@@ -1,8 +1,8 @@
 "use client";
 
 import { Button, Card, CardContent } from "@ansospace/ui";
-import { Copy, Check } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { Check, Copy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface PixelData {
   x: number;
@@ -324,8 +324,9 @@ export function ColorPaletteViewer({ data, enableHover = true }: ColorPaletteVie
               {data.extractedColors.map((color) => {
                 const isHighlighted = highlightedPaletteColor === color;
                 return (
-                  <div
+                  <button
                     key={color}
+                    type="button"
                     className={`group cursor-pointer transition-all duration-200 ${
                       isHighlighted ? "scale-105" : ""
                     }`}
@@ -357,7 +358,7 @@ export function ColorPaletteViewer({ data, enableHover = true }: ColorPaletteVie
                         </div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>

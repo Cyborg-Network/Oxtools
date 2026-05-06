@@ -31,6 +31,7 @@ export function useToolExecution({
 	const [result, setResult] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<ToolError | null>(null);
+	const timeoutErrorRef = useRef(false);
 	const abortControllerRef = useRef<AbortController | null>(null);
 	const timeoutIdRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -44,6 +45,7 @@ export function useToolExecution({
 			if (timeoutIdRef.current) {
 				clearTimeout(timeoutIdRef.current);
 			}
+			timeoutErrorRef.current = false;
 
 			const controller = new AbortController();
 			abortControllerRef.current = controller;
@@ -56,11 +58,12 @@ export function useToolExecution({
 			const timeoutMs = toolId === "color-palette" ? 120000 : 30000;
 			
 			const timeoutId = setTimeout(() => {
+				timeoutErrorRef.current = true;
 				controller.abort();
 				setError({
 					message: "Request timeout. The process is taking too long. Please try with a smaller image or check your connection.",
 					code: "timeout",
-					action: "retry"
+					action: "retry",
 				});
 				setIsLoading(false);
 			}, timeoutMs);
@@ -133,10 +136,10 @@ export function useToolExecution({
 			} catch (err) {
 				if (err instanceof DOMException && err.name === "AbortError") {
 					// Request was aborted (either by timeout or user action)
-					if (!error) {  // Only set timeout error if not already set
+					if (!timeoutErrorRef.current) {
 						setError({
 							message: "Request was cancelled. Please try again.",
-							code: "aborted"
+							code: "aborted",
 						});
 					}
 					setResult("");
@@ -165,6 +168,7 @@ export function useToolExecution({
 			clearTimeout(timeoutIdRef.current);
 			timeoutIdRef.current = null;
 		}
+			timeoutErrorRef.current = false;
 		setResult("");
 		setError(null);
 		setIsLoading(false);
