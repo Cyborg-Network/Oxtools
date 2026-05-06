@@ -56,18 +56,19 @@ export function useToolExecution({
 
 			// Set a timeout of 120 seconds for image processing tools, 30 seconds for others
 			const timeoutMs = toolId === "color-palette" ? 120000 : 30000;
-			
+
 			const timeoutId = setTimeout(() => {
 				timeoutErrorRef.current = true;
 				controller.abort();
 				setError({
-					message: "Request timeout. The process is taking too long. Please try with a smaller image or check your connection.",
+					message:
+						"Request timeout. The process is taking too long. Please try with a smaller image or check your connection.",
 					code: "timeout",
 					action: "retry",
 				});
 				setIsLoading(false);
 			}, timeoutMs);
-			
+
 			timeoutIdRef.current = timeoutId;
 
 			try {
@@ -168,7 +169,7 @@ export function useToolExecution({
 			clearTimeout(timeoutIdRef.current);
 			timeoutIdRef.current = null;
 		}
-			timeoutErrorRef.current = false;
+		timeoutErrorRef.current = false;
 		setResult("");
 		setError(null);
 		setIsLoading(false);

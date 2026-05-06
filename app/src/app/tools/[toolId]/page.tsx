@@ -23,7 +23,7 @@ async function compressImage(base64: string, quality: number = 0.8): Promise<str
 			const canvas = document.createElement("canvas");
 			let width = img.width;
 			let height = img.height;
-			
+
 			// Scale down if image is too large (max 2000px on longest side)
 			const maxDim = 2000;
 			if (width > maxDim || height > maxDim) {
@@ -31,10 +31,10 @@ async function compressImage(base64: string, quality: number = 0.8): Promise<str
 				width = Math.floor(width * ratio);
 				height = Math.floor(height * ratio);
 			}
-			
+
 			canvas.width = width;
 			canvas.height = height;
-			
+
 			const ctx = canvas.getContext("2d");
 			if (ctx) {
 				ctx.drawImage(img, 0, 0, width, height);
@@ -413,7 +413,7 @@ function InputField({
 							onChange={async (e) => {
 								const file = e.target.files?.[0];
 								if (!file) return;
-								
+
 								// Validate file size (max 5MB raw)
 								const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 								if (file.size > MAX_FILE_SIZE) {
@@ -422,17 +422,17 @@ function InputField({
 									);
 									return;
 								}
-								
+
 								const reader = new FileReader();
 								reader.onloadend = async () => {
 									let base64 = reader.result as string;
-									
+
 									// If image is still large when base64, try to compress it
 									if (base64.length > 3 * 1024 * 1024) {
 										// Attempt compression via canvas
 										base64 = await compressImage(base64);
 									}
-									
+
 									// Final validation
 									if (base64.length > 4 * 1024 * 1024) {
 										alert(
@@ -440,7 +440,7 @@ function InputField({
 										);
 										return;
 									}
-									
+
 									onChange(base64);
 								};
 								reader.readAsDataURL(file);
@@ -449,7 +449,7 @@ function InputField({
 						/>
 						{value && (
 							<div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border">
-									<NextImage src={value} alt="Preview" fill className="object-cover" unoptimized />
+								<NextImage src={value} alt="Preview" fill className="object-cover" unoptimized />
 							</div>
 						)}
 					</div>

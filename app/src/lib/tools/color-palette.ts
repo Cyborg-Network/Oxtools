@@ -3,8 +3,7 @@ import type { ToolDefinition } from "@/types";
 export const colorPalette: ToolDefinition = {
 	id: "color-palette",
 	name: "Color Palette Generator",
-	description:
-		"Extract all colors from an uploaded image.",
+	description: "Extract all colors from an uploaded image.",
 
 	category: "design",
 	icon: "Palette",
@@ -24,7 +23,7 @@ Extract all distinct colors from the provided image and return them as a JSON ar
 
 Return STRICT JSON format with extractedColors array only.`,
 
-	buildUserPrompt: ({ image }) => {
+	buildUserPrompt: ({ image: _image }) => {
 		return `
 Extract all colors from the uploaded image.
 
@@ -42,8 +41,7 @@ Include all distinct colors found in the image.
 			key: "image",
 			label: "Upload Image",
 			type: "image",
-			helperText:
-				"Upload an image. All colors will be extracted and displayed.",
+			helperText: "Upload an image. All colors will be extracted and displayed.",
 		},
 	],
 };

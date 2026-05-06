@@ -56,6 +56,7 @@ function MermaidViewer({ chart }: { chart: string }) {
 		);
 	}
 
+	// biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid returns trusted SVG markup for display
 	return (
 		<div
 			ref={containerRef}
@@ -218,6 +219,15 @@ export function ResultViewer({
 	const [copiedExtracted, setCopiedExtracted] = useState(false);
 	const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
 
+	type StructuredResult = {
+		code?: string;
+		palette?: Record<string, string>;
+		roles?: Record<string, string>;
+		image?: string;
+		extractedColors?: string[];
+		[key: string]: unknown;
+	};
+
 	const handleCopyAll = useCallback(async () => {
 		await navigator.clipboard.writeText(result);
 		setCopiedAll(true);
@@ -267,7 +277,7 @@ export function ResultViewer({
 		);
 	}
 
-	let parsedJson: { code?: string; [key: string]: any } | null = null;
+	let parsedJson: StructuredResult | null = null;
 	let displayMarkdown = "";
 	let pipelineLogs = "";
 	let isReportStarted = false;
@@ -331,7 +341,11 @@ export function ResultViewer({
 	if (result) {
 		// Check for output markers (both old and new format)
 		if (result.includes("---OUTPUT_START---")) {
-			const structuredBlock = extractStructuredBlock(result, "---OUTPUT_START---", "---OUTPUT_END---");
+			const structuredBlock = extractStructuredBlock(
+				result,
+				"---OUTPUT_START---",
+				"---OUTPUT_END---"
+			);
 			if (structuredBlock) {
 				outputContent = structuredBlock;
 			} else {
@@ -381,9 +395,9 @@ export function ResultViewer({
 		try {
 			const trimmed = outputContent.trim();
 			const jsonCandidate =
-				(trimmed.startsWith("{") && trimmed.endsWith("}")) ? trimmed : extractBalancedJson(trimmed);
+				trimmed.startsWith("{") && trimmed.endsWith("}") ? trimmed : extractBalancedJson(trimmed);
 			if (jsonCandidate) {
-				const parsed = JSON.parse(jsonCandidate);
+				const parsed = JSON.parse(jsonCandidate) as StructuredResult;
 				// Check for color palette JSON
 				if (
 					parsed.palette &&
@@ -409,7 +423,10 @@ export function ResultViewer({
 			const match = outputContent.trim().match(htmlBlockRegex);
 			if (match?.[1]) {
 				parsedJson = { code: match[1] };
-			} else if (outputContent.trim().startsWith("<!DOCTYPE html>") || outputContent.trim().startsWith("<html")) {
+			} else if (
+				outputContent.trim().startsWith("<!DOCTYPE html>") ||
+				outputContent.trim().startsWith("<html")
+			) {
 				parsedJson = { code: outputContent.trim() };
 			} else {
 				// Not HTML or JSON, treat as markdown
@@ -520,7 +537,7 @@ export function ResultViewer({
 									textColor = "text-red-400";
 								}
 								return (
-									<div key={i} className={`py-0.5 ${textColor}`}>
+									<div key={`${line}-${textColor}`} className={`py-0.5 ${textColor}`}>
 										{line}
 									</div>
 								);
@@ -549,9 +566,11 @@ export function ResultViewer({
 			{/* If result contains an image or extracted colors but no full palette,
 			    render an interactive preview so the uploaded image can be inspected locally. */}
 			{(() => {
-				let previewData: any = null;
+				let previewData: StructuredResult | null = null;
 				try {
-					const candidate = outputContent ? JSON.parse(outputContent.trim()) : null;
+					const candidate = (
+						outputContent ? JSON.parse(outputContent.trim()) : null
+					) as StructuredResult | null;
 					if (candidate && (candidate.image || Array.isArray(candidate.extractedColors))) {
 						previewData = candidate;
 					}
@@ -592,7 +611,7 @@ export function ResultViewer({
 								</Button>
 							</div>
 							<CardContent className="pt-10 pb-6 relative">
-								<ColorPaletteViewer data={parsedJson as any} enableHover={true} />
+								<ColorPaletteViewer data={parsedJson} enableHover={true} />
 							</CardContent>
 						</Card>
 					);
@@ -625,6 +644,7 @@ export function ResultViewer({
 					{hasHtmlCode && (
 						<div className="flex border-b border-border/50 px-4 pt-3 bg-muted/20">
 							<button
+								type="button"
 								onClick={() => setActiveTab("preview")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "preview"
@@ -635,6 +655,7 @@ export function ResultViewer({
 								Preview
 							</button>
 							<button
+								type="button"
 								onClick={() => setActiveTab("code")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "code"
