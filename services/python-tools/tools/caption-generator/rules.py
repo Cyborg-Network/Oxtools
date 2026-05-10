@@ -42,18 +42,15 @@ PLATFORM_RULES = {
 VARIATION_STYLES = {
     "professional": {
         "name": "Professional",
-        "description": "Formal, polished, business-appropriate tone",
-        "characteristics": ["Clear and concise", "Professional vocabulary", "Minimal emoji", "Structured"]
+        "description": "Like sharing work updates on LinkedIn - clear, knowledgeable, barely any emoji",
     },
     "casual": {
         "name": "Casual",
-        "description": "Friendly, conversational, approachable tone",
-        "characteristics": ["Warm language", "Light emoji", "Conversational", "Engaging"]
+        "description": "Like texting a friend - relaxed, fun, naturally expressive",
     },
     "bold": {
         "name": "Bold",
-        "description": "Confident, attention-grabbing, high-impact tone",
-        "characteristics": ["Power words", "Strong statements", "More emoji", "Call to action"]
+        "description": "Confident, attention-grabbing, energetic",
     },
 }
 
