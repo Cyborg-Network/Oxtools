@@ -36,6 +36,21 @@ async def run(data:dict)->dict:
             "result": None
         }
 
+    words = prompt.strip().split()
+    if len(words) < 5:
+        return {
+            "error": "Please describe your content in more detail. Add more information about what you want to share.",
+            "result": None
+        }
+    
+    random_patterns = ["asdf", "qwerty", "12345", "abc", "xxx", "yyy", "test", "ffff", "dddd"]
+    lower_prompt = prompt.lower()
+    if len(words) < 10 and any(p in lower_prompt for p in random_patterns):
+        return {
+            "error": "Please describe your content in more detail. Add more information about what you want to share.",
+            "result": None
+        }
+
     client = AsyncOpenAI(
         base_url="https://api.oxlo.ai/v1",
         api_key=api_key,
@@ -93,9 +108,9 @@ async def run(data:dict)->dict:
     
     output_lines = []
 
-    if context_from_image:
-        output_lines.append(f"[Image OCR: {context_from_image[:100]}...]")
-        output_lines.append("")
+    # if context_from_image:
+    #     output_lines.append(f"[Image OCR: {context_from_image[:100]}...]")
+    #     output_lines.append("")
 
     for p, platform_data in all_results.items():
         plat_info = PLATFORM_RULES.get(p, {})
