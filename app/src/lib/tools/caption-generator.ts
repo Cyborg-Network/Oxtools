@@ -9,7 +9,7 @@ export const captionGenerator: ToolDefinition = {
 	icon: "PenTool",
 	status: "active",
 	tier: "tier2",
-	requiredFields: ["prompt", "platform", "style"],
+	requiredFields: ["prompt", "platform"],
 	defaultModel: "kimi-k2.5",
 	buildSystemPrompt: () => "",
     buildUserPrompt: () => "",
@@ -35,5 +35,5 @@ export const captionGenerator: ToolDefinition = {
         //   defaultValue: "professional" },
 		  
         { key: "image", label: "Image (optional)", type: "image", }
-    ],
+    ]
 };
