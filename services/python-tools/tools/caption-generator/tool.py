@@ -92,12 +92,12 @@ async def run(data:dict)->dict:
                     regenerate_indices.add(i)
                     regenerate_indices.add(j)
 
-                captions = [c for idx, c in enumerate(new_captions) if idx not in regenerate_indices]
-
+                new_captions_dict = {i: c for i, c in enumerate(new_captions)}
                 for idx in regenerate_indices:
                     style_map = {0: "professional", 1: "casual", 2: "bold"}
                     new_cap = await generate_caption(client, prompt, p, style_map[idx], context_from_image)
-                    captions.append(new_cap)
+                    new_captions_dict[idx]= new_cap
+                captions = [new_captions_dict[i] for i in range(3)]
 
                 retry_count += 1
             else:
