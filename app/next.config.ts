@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    allowedDevOrigins: [
+      "chrome-extension://poaainbnlkonlkjiiemhfoflbkobamec"
+    ]
+  },
 	reactCompiler: true,
 	// Proxy tier2 streaming tool requests directly to the Python runner,
 	// bypassing the Next.js API route runtime which kills long-lived streams.

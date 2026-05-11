@@ -19,7 +19,7 @@ export interface UsageStatus {
 
 // Plan limits mapping
 const PLAN_LIMITS: Record<string, number> = {
-	free: 5,
+	free: 500,
 	pro: 20,
 	premium: 100,
 };

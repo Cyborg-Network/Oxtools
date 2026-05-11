@@ -13,7 +13,6 @@ import numpy as np
 from openai import OpenAI
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim_fn
-
 logger = logging.getLogger("screenshot-to-code")
 
 # ─── MANIFEST ─────────────────────────────────────────────────────────────────
