@@ -7,6 +7,7 @@ import { saveToolHistory } from "@/lib/history-db";
 interface UseToolExecutionOptions {
 	apiEndpoint: string;
 	toolId?: string;
+	timeoutMs?: number;
 }
 
 export interface ToolError {
@@ -27,6 +28,7 @@ interface UseToolExecutionReturn {
 export function useToolExecution({
 	apiEndpoint,
 	toolId: explicitToolId,
+	timeoutMs = 30_000,
 }: UseToolExecutionOptions): UseToolExecutionReturn {
 	const [result, setResult] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +51,8 @@ export function useToolExecution({
 
 			const controller = new AbortController();
 			abortControllerRef.current = controller;
+
+			const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
 			setIsLoading(true);
 			setError(null);
@@ -150,6 +154,7 @@ export function useToolExecution({
 				setError({ message, code: "client_error" });
 				setResult("");
 			} finally {
+				clearTimeout(timeoutId);
 				setIsLoading(false);
 				abortControllerRef.current = null;
 				if (timeoutIdRef.current) {

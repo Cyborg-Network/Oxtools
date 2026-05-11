@@ -49,6 +49,8 @@ export interface ToolDefinition {
 	buildUserPrompt: (body: Record<string, string>) => string;
 	/** Default model when none is provided */
 	defaultModel?: string;
+	/** Optional custom timeout in milliseconds */
+	timeoutMs?: number;
 
 	// --- UI config ---
 	/** Declarative form field definitions */
