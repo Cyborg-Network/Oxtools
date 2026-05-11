@@ -66,6 +66,7 @@ STRICT REQUIREMENTS:
 - Caption (excluding hashtags): MUST be under {max_chars} characters
 - Add {hashtag_count[0]}-{hashtag_count[1]} hashtags at the very end on a new line
 - NEVER put emojis in middle of words/sentences - ONLY at END of complete sentences or at very end of caption
+- Do NOT use em dashes (—) in the caption use regular hyphens (-) or no punctuation instead
 - Write in natural, conversational way people actually use
 
 Style ({style_info['name']}): {style_info['description']}

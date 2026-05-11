@@ -124,6 +124,7 @@ async def run(data:dict)->dict:
         style_names = ["Professional", "Casual", "Bold"]
         for i, caption in enumerate(variations):
             output_lines.append(f"**{style_names[i]}**")
+            output_lines.append("")
             output_lines.append(caption)
             output_lines.append("")
     
