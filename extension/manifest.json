@@ -18,6 +18,7 @@
   "side_panel": {
     "default_path": "src/sidepanel/index.html"
   },
+
   "action": {
     "default_title": "Open Oxtools",
     "default_icon": {

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sandbox</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'RENDER_HTML') {
+        const resultHtml = event.data.html;
+        
+        // Ensure standard dark mode is applied if not explicitly overridden by AI
+        const styleInjection = `<style>body { color-scheme: dark; background-color: transparent !important; color: white; margin: 0; padding: 16px; }</style>`;
+        
+        let finalHtml;
+        if (resultHtml.includes('<head>')) {
+          finalHtml = resultHtml.replace('<head>', `<head>${styleInjection}`);
+        } else {
+          finalHtml = `${styleInjection}${resultHtml}`;
+        }
+
+        // We use document.write to properly evaluate scripts like Tailwind CDN
+        document.open();
+        document.write(finalHtml);
+        document.close();
+      }
+    });
+  </script>
+</body>
+</html>

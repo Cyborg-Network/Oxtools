@@ -2,6 +2,9 @@
 import '../index.css';
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Wand2, Copy, Check } from 'lucide-react';
 
 interface ElementRect {
   top: number;
@@ -18,7 +21,6 @@ function cropImage(dataUrl: string, rect: ElementRect): Promise<string> {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      // Use the captured image dimensions vs the page viewport to compute scale
       const scaleX = img.width / rect.innerWidth;
       const scaleY = img.height / rect.innerHeight;
 
@@ -38,7 +40,6 @@ function cropImage(dataUrl: string, rect: ElementRect): Promise<string> {
       );
 
       const base64 = canvas.toDataURL('image/jpeg', 0.95);
-      // Strip the data URI prefix before sending to the API
       resolve(base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, ''));
     };
     img.src = dataUrl;
@@ -48,25 +49,19 @@ function cropImage(dataUrl: string, rect: ElementRect): Promise<string> {
 export default function SidePanel() {
   const [loading, setLoading] = useState(false);
   const [resultHtml, setResultHtml] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const [status, setStatus] = useState<string>('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const messageListener = async (request: any) => {
-
-      // ── ELEMENT_CLICKED: content script clicked an element ──────────────────
-      // This is the NEW architecture. The side panel captures the screenshot
-      // directly, bypassing the Chrome bug where captureVisibleTab returns
-      // undefined when the Side Panel is the focused window.
       if (request.action === "ELEMENT_CLICKED") {
         setLoading(true);
         setResultHtml(null);
-        setStatus('📸 Capturing screenshot...');
+        setStatus('Capturing screenshot...');
 
         try {
           const rect: ElementRect = request.payload;
 
-          // Find the tab that has the content script (the active web page)
           const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
           const targetTab = tabs.find(t =>
             t.url &&
@@ -79,11 +74,6 @@ export default function SidePanel() {
             throw new Error('Could not find the web page window to screenshot');
           }
 
-          console.log(`📸 Capturing window ${targetTab.windowId} (tab: ${targetTab.id})`);
-
-          // Capture the screenshot directly from the Side Panel.
-          // This works because the side panel calls captureVisibleTab with the
-          // explicit windowId of the web page, not the side panel's own window.
           const dataUrl = await new Promise<string>((resolve, reject) => {
             chrome.tabs.captureVisibleTab(
               targetTab.windowId!,
@@ -100,13 +90,10 @@ export default function SidePanel() {
             );
           });
 
-          console.log(`✅ Screenshot captured (${dataUrl.length} chars). Cropping...`);
-          setStatus('✂️ Cropping element...');
-
+          setStatus('Cropping element...');
           const croppedBase64 = await cropImage(dataUrl, rect);
-          console.log(`✅ Cropped (${croppedBase64.length} chars). Sending to backend...`);
-          setStatus('🤖 AI is generating code...');
-
+          
+          setStatus('AI generating code...');
           const response = await fetch('http://localhost:9080/api/tools/screenshot-to-code', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -121,8 +108,7 @@ export default function SidePanel() {
           const data = await response.json();
 
           if (data.code) {
-            setResultHtml(data.code);
-            setActiveTab('preview');
+            setResultHtml(data.code as string);
             setStatus('');
           } else if (data.error) {
             throw new Error(`Backend: ${data.error}`);
@@ -130,13 +116,12 @@ export default function SidePanel() {
             throw new Error('Backend returned no code and no error');
           }
         } catch (error: any) {
-          console.error('❌ Pipeline failed:', error);
+          console.error('Pipeline failed:', error);
           setStatus('');
           setResultHtml(
-            `<!-- Error -->\n<div style="color:#ef4444;padding:1rem;font-family:monospace;font-size:13px;background:#1a1a1a;height:100vh">` +
-            `<b>❌ Error</b><br><br>${error.message}</div>`
+            `<!-- Error -->\n<div style="color:#ff4a4a;padding:1rem;font-family:monospace;font-size:13px;">` +
+            `<b>Error</b><br><br>${error.message}</div>`
           );
-          setActiveTab('code');
         } finally {
           setLoading(false);
         }
@@ -157,14 +142,12 @@ export default function SidePanel() {
     );
 
     if (!targetTab?.id) {
-      console.error('❌ No valid tab found:', tabs.map(t => t.url));
+      console.error('No valid tab found.');
       return;
     }
 
     const tabId = targetTab.id;
-    console.log(`🎯 Targeting tab ${tabId}: ${targetTab.url}`);
 
-    // Inject the content script if it isn't already in this tab
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId },
@@ -174,117 +157,148 @@ export default function SidePanel() {
       const alreadyInjected = results?.[0]?.result === true;
 
       if (!alreadyInjected) {
-        console.log('💉 Injecting content script...');
         const manifest = chrome.runtime.getManifest();
         const contentScriptFile = manifest.content_scripts?.[0]?.js?.[0];
 
-        if (!contentScriptFile) {
-          console.error('❌ Cannot find content script file in manifest');
-          return;
+        if (contentScriptFile) {
+          await chrome.scripting.executeScript({ target: { tabId }, files: [contentScriptFile] });
+          await new Promise(r => setTimeout(r, 150));
         }
-
-        await chrome.scripting.executeScript({ target: { tabId }, files: [contentScriptFile] });
-        await new Promise(r => setTimeout(r, 150));
-      } else {
-        console.log('✅ Content script already present.');
       }
     } catch (err) {
-      console.error('❌ Failed to inject content script:', err);
+      console.error('Failed to inject content script:', err);
       return;
     }
 
-    // Send ACTIVATE_WAND to the injected content script
     try {
-      const response = await chrome.tabs.sendMessage(tabId, { action: 'ACTIVATE_WAND' });
-      console.log('✅ Wand activated!', response);
+      await chrome.tabs.sendMessage(tabId, { action: 'ACTIVATE_WAND' });
     } catch (err) {
-      console.error('❌ Still could not reach content script after injection:', err);
+      console.error('Could not reach content script:', err);
+    }
+  };
+
+  const copyToClipboard = async () => {
+    if (!resultHtml) return;
+    try {
+      await navigator.clipboard.writeText(resultHtml);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy', err);
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-900 text-white font-sans">
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-zinc-800 bg-zinc-950">
-        <h1 className="text-base font-semibold tracking-tight text-zinc-100">
-          Oxtools: Screen to Code
-        </h1>
+    <div className="flex flex-col h-screen bg-oled text-zinc-200 font-sans relative overflow-hidden">
+      
+      {/* Background Meshes */}
+      <div className="mesh-bg">
+        <div className="mesh-flare" />
+        <div className="mesh-flare-2" />
       </div>
 
-      {/* State 1: Ready */}
-      {!resultHtml && !loading && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
-          <div className="space-y-2">
-            <p className="text-sm text-zinc-400">
-              Click the wand, then hover and click any element on the page.
+      {/* Main Glassmorphism Container */}
+      <div className="relative z-10 flex flex-col h-full glass-container">
+        
+        {/* Header removed to avoid duplication with Chrome's native panel header */}
+
+        {/* State 1: Ready */}
+        {!resultHtml && !loading && (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-8 animate-fade-up">
+            <div className="space-y-3 max-w-[280px]">
+              <p className="text-[13px] leading-relaxed text-[#a1a1aa]">
+                Click the wand, then hover and click any element on the page. The AI will convert it to pixel-perfect HTML.
+              </p>
+            </div>
+            <button
+              onClick={activateMagicWand}
+              className="flex items-center gap-2.5 px-6 py-3 rounded-lg text-sm font-medium tracking-wide wand-button wand-button-breathing"
+            >
+              <Wand2 size={16} className="text-white/80" />
+              Activate Magic Wand
+            </button>
+          </div>
+        )}
+
+        {/* State 2: Loading */}
+        {loading && (
+          <div className="flex-1 flex flex-col items-center justify-center space-y-5 animate-fade-up">
+            <div className="w-8 h-8 border-[2px] border-white/10 border-t-white/80 rounded-full animate-spin" />
+            <p className="text-[13px] font-medium tracking-wide text-[#a1a1aa] animate-pulse">
+              {status || 'Working...'}
             </p>
-            <p className="text-xs text-zinc-600">
-              The AI will convert it to pixel-perfect HTML.
-            </p>
           </div>
-          <button
-            onClick={activateMagicWand}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-sm font-medium rounded-lg shadow-lg transition-all duration-150"
-          >
-            🪄 Activate Magic Wand
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* State 2: Loading */}
-      {loading && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-medium text-zinc-400 animate-pulse">{status || 'Working...'}</p>
-        </div>
-      )}
-
-      {/* State 3: Results */}
-      {resultHtml && !loading && (
-        <div className="flex flex-col h-full overflow-hidden">
-          <div className="flex bg-zinc-950 border-b border-zinc-800">
-            <button
-              onClick={() => setActiveTab('preview')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'preview' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              Preview
-            </button>
-            <button
-              onClick={() => setActiveTab('code')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'code' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              Code
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-hidden relative bg-zinc-950">
-            {activeTab === 'preview' ? (
-              <div className="absolute inset-0 p-4">
-                <div className="w-full h-full bg-white rounded-xl shadow-inner border border-zinc-800 overflow-hidden">
-                  <iframe srcDoc={resultHtml} className="w-full h-full border-0" sandbox="allow-scripts" />
-                </div>
+        {/* State 3: Results */}
+        {resultHtml && !loading && (
+          <div className="flex flex-col flex-1 overflow-hidden animate-fade-up">
+            
+            {/* Preview temporarily disabled — uncomment when preview is production-ready */}
+            {/* Top Half: Preview — full desktop width scaled to fit panel
+            <div className="flex-shrink-0 h-[45%] flex flex-col border-b border-white/5">
+              <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between bg-[#050505]">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Preview</span>
+                <span className="text-[10px] text-zinc-600">Live render · {Math.round(previewScale * 100)}%</span>
               </div>
-            ) : (
-              <div className="absolute inset-0 p-4">
-                <div className="w-full h-full bg-[#0d0d0d] rounded-xl border border-zinc-800 overflow-auto">
-                  <pre className="p-4 text-xs font-mono text-green-400 whitespace-pre-wrap">
-                    {resultHtml}
-                  </pre>
-                </div>
+              <div ref={previewContainerRef} className="flex-1 relative overflow-hidden bg-[#111]">
+                {blobUrl && (
+                  <div style={{ width: DESKTOP_WIDTH, height: `${100 / previewScale}%`, transform: `scale(${previewScale})`, transformOrigin: 'top left' }}>
+                    <iframe key={blobUrl} src={blobUrl} style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} title="Preview" sandbox="allow-scripts allow-same-origin allow-forms" />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+            */}
 
-          <div className="p-4 border-t border-zinc-800 bg-zinc-950">
-            <button
-              onClick={() => { setResultHtml(null); setStatus(''); }}
-              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
-            >
-              Clear & Start Over
-            </button>
+            {/* Bottom Half: Code Editor */}
+            <div className="flex-1 flex flex-col min-h-0 bg-[#0d0d0d]">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-[#050505]">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Source Code</span>
+                
+                <button
+                  onClick={copyToClipboard}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-zinc-300 hover:text-white"
+                >
+                  {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  <span className="text-[11px] font-medium tracking-wide">{copied ? 'Copied!' : 'Copy Code'}</span>
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-auto relative">
+                <SyntaxHighlighter
+                  language="html"
+                  style={vscDarkPlus}
+                  customStyle={{
+                    margin: 0,
+                    padding: '16px',
+                    fontSize: '12px',
+                    fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
+                    background: 'transparent',
+                    lineHeight: '1.6'
+                  }}
+                  wrapLines={true}
+                  wrapLongLines={true}
+                >
+                  {resultHtml}
+                </SyntaxHighlighter>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-white/5 bg-[#050505]">
+              <button
+                onClick={() => { 
+                  setResultHtml(null); 
+                  setStatus(''); 
+                }}
+                className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-white text-sm font-medium tracking-wide rounded-lg transition-colors border border-white/5"
+              >
+                Clear & Start Over
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
