@@ -52,6 +52,7 @@ export default function SidePanel() {
   const [status, setStatus] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
+
   useEffect(() => {
     const messageListener = async (request: any) => {
       if (request.action === "ELEMENT_CLICKED") {
@@ -234,19 +235,27 @@ export default function SidePanel() {
         {resultHtml && !loading && (
           <div className="flex flex-col flex-1 overflow-hidden animate-fade-up">
             
-            {/* Preview temporarily disabled — uncomment when preview is production-ready */}
-            {/* Top Half: Preview — full desktop width scaled to fit panel
+            {/* Top Half: Preview — full desktop width scaled to fit panel */}
+            {/* 
             <div className="flex-shrink-0 h-[45%] flex flex-col border-b border-white/5">
               <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between bg-[#050505]">
                 <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Preview</span>
                 <span className="text-[10px] text-zinc-600">Live render · {Math.round(previewScale * 100)}%</span>
               </div>
               <div ref={previewContainerRef} className="flex-1 relative overflow-hidden bg-[#111]">
-                {blobUrl && (
-                  <div style={{ width: DESKTOP_WIDTH, height: `${100 / previewScale}%`, transform: `scale(${previewScale})`, transformOrigin: 'top left' }}>
-                    <iframe key={blobUrl} src={blobUrl} style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} title="Preview" sandbox="allow-scripts allow-same-origin allow-forms" />
-                  </div>
-                )}
+                <div style={{ width: DESKTOP_WIDTH, height: `${100 / previewScale}%`, transform: `scale(${previewScale})`, transformOrigin: 'top left' }}>
+                  <iframe
+                    ref={iframeRef}
+                    src={chrome.runtime.getURL("src/sandbox/frame.html")}
+                    style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                    title="Live Preview"
+                    onLoad={() => {
+                      if (resultHtml && tailwindScript && iframeRef.current?.contentWindow) {
+                        iframeRef.current.contentWindow.postMessage({ html: resultHtml, tailwind: tailwindScript }, '*');
+                      }
+                    }}
+                  />
+                </div>
               </div>
             </div>
             */}
@@ -256,13 +265,22 @@ export default function SidePanel() {
               <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-[#050505]">
                 <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Source Code</span>
                 
-                <button
-                  onClick={copyToClipboard}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-zinc-300 hover:text-white"
-                >
-                  {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                  <span className="text-[11px] font-medium tracking-wide">{copied ? 'Copied!' : 'Copy Code'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={copyToClipboard}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-zinc-300 hover:text-white"
+                  >
+                    {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    <span className="text-[11px] font-medium tracking-wide">{copied ? 'Copied!' : 'Copy Code'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => chrome.tabs.create({ url: 'https://html.onlineviewer.net/' })}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-zinc-300 hover:text-white"
+                  >
+                    <span className="text-[11px] font-medium tracking-wide">Open Preview ↗</span>
+                  </button>
+                </div>
               </div>
               
               <div className="flex-1 overflow-auto relative">
