@@ -31,6 +31,7 @@ import { sqlConverter } from "./sql-converter";
 import { textFormatter } from "./text-formatter";
 import { uiToCode } from "./ui-to-code";
 import { unitTestGenerator } from "./unit-test-generator";
+import { autoReadmeGeneratorTool } from "./auto-readme-generator";
 
 // ---------------------------------------------------------------------------
 // Categories
@@ -114,6 +115,7 @@ export const tools: ToolDefinition[] = [
 	captionGenerator,
 	seoWriter,
 	deepResearch, // Tier 2: LangGraph multi-agent Python service
+	autoReadmeGeneratorTool,
 ];
 
 // ---------------------------------------------------------------------------
