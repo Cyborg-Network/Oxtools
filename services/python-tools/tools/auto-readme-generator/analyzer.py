@@ -1,9 +1,34 @@
 import json
 import re
+from typing import Literal
+
+from pydantic import BaseModel
 
 from llm_client import call_oxlo_chat
 
 ANALYZER_MODEL = "deepseek-v3.2"
+
+DEFAULT_METADATA = {
+    "language": "unknown",
+    "package_manager": "unknown",
+    "framework": "unknown",
+    "entry_point": "unknown",
+    "project_type": "other",
+}
+
+
+class ProjectMetadata(BaseModel):
+    language: str = "unknown"
+    package_manager: str = "unknown"
+    framework: str = "unknown"
+    entry_point: str = "unknown"
+    project_type: Literal["library", "cli", "web-api", "web-app", "other"] = "other"
+
+
+def _sanitize(value: str, max_len: int = 500) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:max_len]
 
 
 def _extract_json(text: str) -> str:
@@ -11,19 +36,53 @@ def _extract_json(text: str) -> str:
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z0-9_-]*", "", text)
         text = re.sub(r"```$", "", text.strip())
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    return match.group(0) if match else text
+    return text
+
+
+def _parse_json(text: str) -> dict:
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
+                    return item
+    except json.JSONDecodeError:
+        pass
+
+    for pattern in (r"\{.*?\}", r"\[.*?\]"):
+        match = re.search(pattern, text, re.DOTALL)
+        if not match:
+            continue
+        try:
+            parsed = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
+                    return item
+
+    return DEFAULT_METADATA.copy()
 
 
 async def analyze_project(name: str, description: str, tech_stack: str) -> dict:
+    safe_name = _sanitize(name)
+    safe_description = _sanitize(description, max_len=2000)
+    safe_tech_stack = _sanitize(tech_stack)
+
     system_prompt = (
         "You are a project analyzer. "
         "Respond ONLY with a JSON object. No markdown, no explanation."
     )
     user_prompt = (
-        f"Project: {name}\n"
-        f"Description: {description}\n"
-        f"Tech stack: {tech_stack}\n\n"
+        "Project:\n"
+        f"<name>{safe_name}</name>\n"
+        f"<description>{safe_description}</description>\n"
+        f"<tech_stack>{safe_tech_stack}</tech_stack>\n\n"
         "Return JSON with keys: language, package_manager, framework, "
         "entry_point, project_type (library|cli|web-api|web-app|other)."
     )
@@ -37,4 +96,5 @@ async def analyze_project(name: str, description: str, tech_stack: str) -> dict:
     )
 
     cleaned = _extract_json(raw)
-    return json.loads(cleaned)
+    parsed = _parse_json(cleaned)
+    return ProjectMetadata(**parsed).model_dump()

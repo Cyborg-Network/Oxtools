@@ -3,6 +3,7 @@ import type { CategoryInfo, ToolCategory, ToolDefinition } from "@/types";
 import { apiChangeAnalyzer } from "./api-change-analyzer";
 import { apiValidator } from "./api-validator";
 import { architectureDiagram } from "./architecture-diagram";
+import { autoReadmeGeneratorTool } from "./auto-readme-generator";
 import { bugReplayer } from "./bug-replayer";
 import { captionGenerator } from "./caption-generator";
 // --- Core tool definitions ---
@@ -31,7 +32,6 @@ import { sqlConverter } from "./sql-converter";
 import { textFormatter } from "./text-formatter";
 import { uiToCode } from "./ui-to-code";
 import { unitTestGenerator } from "./unit-test-generator";
-import { autoReadmeGeneratorTool } from "./auto-readme-generator";
 
 // ---------------------------------------------------------------------------
 // Categories

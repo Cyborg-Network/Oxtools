@@ -38,12 +38,49 @@ def _find_fence_issues(content: str) -> list:
         else:
             in_block = False
 
+    if in_block:
+        issues.append({"type": "unclosed_fence", "detail": "code block not closed"})
+
     return issues
+
+
+def _extract_code_blocks(content: str) -> list:
+    blocks = []
+    in_block = False
+    current = []
+
+    for line in content.splitlines():
+        if line.startswith("```"):
+            if in_block:
+                blocks.append("\n".join(current))
+                current = []
+                in_block = False
+            else:
+                in_block = True
+            continue
+
+        if in_block:
+            current.append(line)
+
+    return blocks
 
 
 def _has_install_command(content: str, package_manager: str) -> bool:
     options = INSTALL_COMMANDS.get(package_manager.lower(), [])
-    return any(cmd in content for cmd in options)
+    if not options:
+        return False
+
+    code_blocks = _extract_code_blocks(content)
+    for block in code_blocks:
+        if any(cmd in block for cmd in options):
+            return True
+
+    for cmd in options:
+        pattern = re.compile(rf"(?m)^[\t >`]*{re.escape(cmd)}\b")
+        if pattern.search(content):
+            return True
+
+    return False
 
 
 def validate_readme(content: str, section_plan: list, metadata: Optional[dict] = None) -> list:

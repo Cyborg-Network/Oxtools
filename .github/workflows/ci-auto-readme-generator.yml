@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install deps
-        run: pip install httpx==0.27.0 pytest
+        run: pip install -r services/python-tools/tools/auto-readme-generator/requirements.txt
       - name: Run tests
         run: |
           cd services/python-tools/tools/auto-readme-generator

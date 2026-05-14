@@ -3,12 +3,12 @@ import type { ToolDefinition } from "@/types";
 export const autoReadmeGeneratorTool: ToolDefinition = {
 	id: "auto-readme-generator",
 	name: "Auto README Generator",
-	description:
-		"Multi-agent pipeline that generates structured, validated READMEs.",
+	description: "Multi-agent pipeline that generates structured, validated READMEs.",
 	category: "documentation",
 	icon: "FileText",
 	status: "active",
-	
+	outputFormat: "streaming-text",
+
 	// Tier 2: runs in the unified Python tool runner
 	tier: "tier2",
 

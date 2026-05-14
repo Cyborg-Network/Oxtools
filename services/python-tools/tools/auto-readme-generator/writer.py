@@ -2,12 +2,48 @@ from llm_client import call_oxlo_chat
 
 WRITER_MODEL = "llama-3.3-70b"
 
+ALLOWED_SECTIONS = {
+    "Title",
+    "Badges",
+    "Description",
+    "Features",
+    "Quick Start",
+    "Usage",
+    "API Reference",
+    "Config",
+    "Contributing",
+    "License",
+    "Installation",
+}
+
+
+def _sanitize(value: str, max_len: int = 500) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:max_len]
+
+
+def _sanitize_section_plan(section_plan: list) -> list:
+    if not section_plan:
+        return []
+    cleaned = []
+    seen = set()
+    for section in section_plan:
+        if not isinstance(section, str):
+            continue
+        section = section.strip()
+        if section in ALLOWED_SECTIONS and section not in seen:
+            cleaned.append(section)
+            seen.add(section)
+    return cleaned
+
 
 async def write_readme(metadata: dict, section_plan: list) -> str:
-    package_manager = (metadata or {}).get("package_manager", "unknown")
-    language = (metadata or {}).get("language", "unknown")
-    framework = (metadata or {}).get("framework", "unknown")
-    entry_point = (metadata or {}).get("entry_point", "unknown")
+    section_plan = _sanitize_section_plan(section_plan)
+    package_manager = _sanitize((metadata or {}).get("package_manager", "unknown"))
+    language = _sanitize((metadata or {}).get("language", "unknown"))
+    framework = _sanitize((metadata or {}).get("framework", "unknown"))
+    entry_point = _sanitize((metadata or {}).get("entry_point", "unknown"))
 
     system_prompt = (
         "You are a technical writer. Generate a complete README.md in markdown. "
