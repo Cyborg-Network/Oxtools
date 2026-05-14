@@ -32,6 +32,8 @@ export interface ToolDefinition {
 	icon: string;
 	/** Active or placeholder */
 	status: ToolStatus;
+	/** Output format hint for frontend rendering (e.g. "streaming-text") */
+	outputFormat?: string;
 
 	// --- Tier config ---
 	/**

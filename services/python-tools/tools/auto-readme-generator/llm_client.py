@@ -1,14 +1,21 @@
 import os
-from typing import Optional
 
 import httpx
 
 OXLO_BASE_URL = os.getenv("OXLO_BASE_URL", "https://api.oxlo.ai/v1")
 OXLO_API_KEY = os.getenv("OXLO_API_KEY", "")
+_CLIENT: httpx.AsyncClient | None = None
 
 
 class OxloError(RuntimeError):
     pass
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _CLIENT
+    if _CLIENT is None:
+        _CLIENT = httpx.AsyncClient()
+    return _CLIENT
 
 
 async def call_oxlo_chat(
@@ -31,14 +38,14 @@ async def call_oxlo_chat(
         "max_tokens": max_tokens,
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{OXLO_BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {OXLO_API_KEY}"},
-            json=payload,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    client = _get_client()
+    resp = await client.post(
+        f"{OXLO_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {OXLO_API_KEY}"},
+        json=payload,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
 
     return data["choices"][0]["message"]["content"].strip()
