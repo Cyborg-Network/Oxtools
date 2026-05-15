@@ -21,9 +21,9 @@ MANIFEST = {
 
 
 async def run(data: dict):
-    project_name = data.get("projectName") or "Unnamed Project"
-    description = data.get("projectDescription") or ""
-    tech_stack = data.get("techStack") or ""
+    project_name = data.get("projectName", "Unnamed Project")
+    description = data.get("projectDescription", "")
+    tech_stack = data.get("techStack", "")
 
     async def stream():
         if not description.strip():

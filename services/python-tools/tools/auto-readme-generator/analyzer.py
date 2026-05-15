@@ -2,7 +2,7 @@ import json
 import re
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from llm_client import call_oxlo_chat
 
@@ -51,7 +51,7 @@ def _parse_json(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    for pattern in (r"\{.*?\}", r"\[.*?\]"):
+    for pattern in (r"\{.*\}", r"\[.*\]"):
         match = re.search(pattern, text, re.DOTALL)
         if not match:
             continue
@@ -78,11 +78,16 @@ async def analyze_project(name: str, description: str, tech_stack: str) -> dict:
         "You are a project analyzer. "
         "Respond ONLY with a JSON object. No markdown, no explanation."
     )
+    project_data = json.dumps(
+        {
+            "name": safe_name,
+            "description": safe_description,
+            "tech_stack": safe_tech_stack,
+        },
+        ensure_ascii=False,
+    )
     user_prompt = (
-        "Project:\n"
-        f"<name>{safe_name}</name>\n"
-        f"<description>{safe_description}</description>\n"
-        f"<tech_stack>{safe_tech_stack}</tech_stack>\n\n"
+        f"Project data (JSON):\n{project_data}\n\n"
         "Return JSON with keys: language, package_manager, framework, "
         "entry_point, project_type (library|cli|web-api|web-app|other)."
     )
@@ -97,4 +102,7 @@ async def analyze_project(name: str, description: str, tech_stack: str) -> dict:
 
     cleaned = _extract_json(raw)
     parsed = _parse_json(cleaned)
-    return ProjectMetadata(**parsed).model_dump()
+    try:
+        return ProjectMetadata(**parsed).model_dump()
+    except ValidationError:
+        return DEFAULT_METADATA.copy()
