@@ -105,6 +105,14 @@ def test_pipeline_handles_malformed_analyzer_response(monkeypatch):
     monkeypatch.setattr(writer, "call_oxlo_chat", fake_call_oxlo_chat)
     monkeypatch.setattr(refiner, "call_oxlo_chat", fake_call_oxlo_chat)
 
+    captured = {}
+
+    async def fake_write_readme(metadata, section_plan):
+        captured["metadata"] = metadata
+        return _readme_other()
+
+    monkeypatch.setattr(tool, "write_readme", fake_write_readme)
+
     output = asyncio.run(
         _collect_stream(
             {
@@ -116,7 +124,8 @@ def test_pipeline_handles_malformed_analyzer_response(monkeypatch):
     )
 
     assert "---RESULT---" in output
-    assert "[ERROR] Analyzer failed" not in output
+    assert "## Installation" in output
+    assert captured["metadata"] == analyzer.DEFAULT_METADATA
 
 
 def test_refiner_max_retries_returns_content():

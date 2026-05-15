@@ -3,6 +3,7 @@ from typing import Optional
 
 SHIELD_URL_PATTERN = re.compile(r"https?://[^\s\)\]]+")
 VALID_SHIELD_PREFIX = "https://img.shields.io/"
+FENCE_OPEN = re.compile(r"^`{3}(\w*)$")
 
 INSTALL_COMMANDS = {
     "npm": ["npm install", "npm ci"],
@@ -16,7 +17,7 @@ INSTALL_COMMANDS = {
 
 def _has_section(content: str, section: str) -> bool:
     pattern = re.compile(
-        rf"^#{{1,6}}\s+{re.escape(section)}\s*$",
+        rf"^#{{1,6}}\s+{re.escape(section)}\s*#*\s*$",
         re.IGNORECASE | re.MULTILINE,
     )
     return bool(pattern.search(content))
@@ -27,10 +28,11 @@ def _find_fence_issues(content: str) -> list:
     in_block = False
 
     for line in content.splitlines():
-        if not line.startswith("```"):
+        match = FENCE_OPEN.match(line.strip())
+        if match is None:
             continue
 
-        fence_lang = line.replace("```", "", 1).strip()
+        fence_lang = match.group(1)
         if not in_block:
             if not fence_lang:
                 issues.append({"type": "no_lang_fence", "detail": "code block missing language"})
@@ -50,7 +52,8 @@ def _extract_code_blocks(content: str) -> list:
     current = []
 
     for line in content.splitlines():
-        if line.startswith("```"):
+        match = FENCE_OPEN.match(line.strip())
+        if match is not None:
             if in_block:
                 blocks.append("\n".join(current))
                 current = []

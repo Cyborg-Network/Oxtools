@@ -47,5 +47,13 @@ async def call_oxlo_chat(
     )
     resp.raise_for_status()
     data = resp.json()
+    choices = data.get("choices")
+    if not choices or not isinstance(choices, list):
+        raise OxloError(f"Unexpected API response: no choices returned. Response: {data}")
 
-    return data["choices"][0]["message"]["content"].strip()
+    message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+    content = message.get("content")
+    if content is None:
+        raise OxloError(f"Unexpected API response: content is None. Message: {message}")
+
+    return content.strip()
