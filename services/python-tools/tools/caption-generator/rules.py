@@ -3,8 +3,8 @@
 PLATFORM_LIMITS = {
     "youtube": {
         "name": "YouTube",
-        "caption_short_min": 60,
-        "caption_short_max": 100,
+        "caption_short_min": 80,
+        "caption_short_max": 150,
         "caption_long_min": 150,
         "caption_long_max": 200,
         "title_max": 60,
@@ -16,8 +16,8 @@ PLATFORM_LIMITS = {
     },
     "youtube_shorts": {
         "name": "YouTube Shorts",
-        "caption_short_min": 40,
-        "caption_short_max": 60,
+        "caption_short_min": 60,
+        "caption_short_max": 100,
         "caption_long_min": 80,
         "caption_long_max": 100,
         "title_max": 40,
@@ -90,9 +90,9 @@ PLATFORM_LIMITS = {
         "title_max": 0,
         "title_optional": False,
         "hashtag_count": (2, 3),
-        "cta_patterns": ["Link in bio", "Click the link", "Quote this", "Repost"],
+        "cta_patterns": ["Quote this", "Repost", "Share your thoughts"],
         "style": "concise_punchy",
-        "emoji_limit": (1, 3),
+        "emoji_limit": (0, 1),
     },
 }
 
