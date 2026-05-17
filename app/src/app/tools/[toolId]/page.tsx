@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Label, Textarea } from "@ansospace/ui";
-import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
+import { ArrowUpRight, Check, Copy, Crown, Lock, Play, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
@@ -31,8 +31,116 @@ export default function DynamicToolPage() {
 	return <ToolPageContent toolId={tool.id} />;
 }
 
+function VariationCopyButton({ text }: { text: string }) {
+	const [copied, setCopied] = useState(false);
+	const handleCopy = useCallback(async () => {
+		await navigator.clipboard.writeText(text);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	}, [text]);
+
+	return (
+		<button
+			type="button"
+			onClick={handleCopy}
+			className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors hover:bg-primary/10 hover:text-primary data-[copied=true]:text-green-500"
+			data-copied={copied}
+		>
+			{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+			{copied ? "Copied" : "Copy"}
+		</button>
+	);
+}
+
+function CaptionResultDisplay({
+	variations,
+	title,
+	platformName,
+	lengthType,
+}: {
+	variations?: { text: string; chars: number; limit: number; title?: string }[];
+	title?: string | null;
+	platformName?: string;
+	lengthType?: string;
+}) {
+	if (!variations || variations.length === 0) return null;
+
+	const getBarColor = (ratio: number) => {
+		if (ratio > 1.0) return "bg-red-500";
+		if (ratio > 0.8) return "bg-amber-500";
+		return "bg-green-500";
+	};
+
+	const getTextColor = (ratio: number) => {
+		if (ratio > 1.0) return "text-red-500";
+		if (ratio > 0.8) return "text-amber-500";
+		return "text-green-500";
+	};
+
+	return (
+		<div className="space-y-4">
+			{platformName && (
+				<div className="flex items-center justify-between">
+					<h3 className="text-base font-semibold text-foreground">{platformName}</h3>
+					<span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+						{lengthType === "short" ? "Short" : "Long"}
+					</span>
+				</div>
+			)}
+
+			{variations.map((v, i) => {
+				const varTitle = v.title || title;
+				const copyText = varTitle ? "Title: " + varTitle + "\n\nCaption: " + v.text : v.text;
+				const charRatio = v.chars / v.limit;
+				const barColor = getBarColor(charRatio);
+				const barWidth = Math.min(charRatio * 100, 100);
+				const textColor = getTextColor(charRatio);
+
+				return (
+					<div key={i} className="space-y-2">
+						{varTitle && (
+							<div className="rounded-lg border border-primary/20 bg-primary/[0.02] p-3">
+								<div className="flex items-center justify-between">
+									<div>
+										<p className="text-xs text-muted-foreground mb-0.5">Title {i + 1}</p>
+										<p className="text-sm font-medium text-foreground">{varTitle}</p>
+									</div>
+									<VariationCopyButton text={varTitle} />
+								</div>
+							</div>
+						)}
+
+						<div className="group relative rounded-lg border border-border bg-card p-4">
+							<p className="text-xs font-medium text-muted-foreground mb-2">
+								Variation {i + 1}
+							</p>
+							<div>
+								<p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
+									{v.text}
+								</p>
+							</div>
+							<div className="mt-3 flex items-center gap-2">
+								<div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+									<div className={barColor + " h-full rounded-full transition-all"} style={{ width: barWidth + "%" }} />
+								</div>
+								<span className={"shrink-0 text-xs font-medium " + textColor}>
+									{v.chars}/{v.limit}
+								</span>
+							</div>
+							<div className="absolute right-3 top-3">
+								<VariationCopyButton text={copyText} />
+							</div>
+						</div>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
 function ToolPageContent({ toolId }: { toolId: string }) {
 	const tool = getToolById(toolId)!;
+	const isCaptionGenerator = tool.id === "caption-generator";
 	// Model is hardcoded per tool - no user selection
 	const model = tool.defaultModel || "llama-3.3-70b";
 	const [fields, setFields] = useState<Record<string, string>>(() => {
@@ -43,6 +151,19 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		}
 		return initial;
 	});
+
+	// Caption-specific result data
+	const [captionResult, setCaptionResult] = useState<{
+		variations?: { text: string; chars: number; limit: number; title?: string }[];
+		title?: string | null;
+		platformName?: string;
+		lengthType?: string;
+	}>({});
+
+	// Length selector modal state
+	const [showLengthModal, setShowLengthModal] = useState(false);
+	const [isGenerating, setIsGenerating] = useState(false);
+	const [apiError, setApiError] = useState<string | null>(null);
 
 	// Tier2 tools MUST bypass Next.js proxy buffering to prevent silent timeouts on long executions
 	const runnerUrl = process.env.NEXT_PUBLIC_TOOL_RUNNER_URL || "http://localhost:9080";
@@ -64,6 +185,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 			}
 			setFields(restored);
 			setResult(restoredResult);
+			setCaptionResult({});
 		},
 		[tool, setResult]
 	);
@@ -76,30 +198,103 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const [mounted, setMounted] = useState(false);
 	useEffect(() => setMounted(true), []);
 
-	// Show popup when limit is newly reached
+// Show popup when limit is newly reached
 	useEffect(() => {
 		if (mounted && toolUsage.limitReached) {
 			setShowUpgradeDialog(true);
 		}
 	}, [mounted, toolUsage.limitReached]);
 
+	// Parse caption results when result changes
+	useEffect(() => {
+		if (isCaptionGenerator && result) {
+			try {
+				const data = JSON.parse(result);
+				if (data.variations || data.title) {
+					setCaptionResult({
+						variations: data.variations,
+						title: data.title,
+						platformName: data.metadata?.platform_name || data.metadata?.platform,
+						lengthType: data.metadata?.length_type,
+					});
+				}
+			} catch {
+				// Not JSON, ignore
+			}
+		}
+	}, [result, isCaptionGenerator]);
+
+	// Check if all required fields are filled
+	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
+
 	const handleExecute = () => {
-		// Check per-tool usage limit
 		if (!canExecute(tool.id)) {
 			setShowUpgradeDialog(true);
 			return;
 		}
-		// Check required fields
 		for (const field of tool.requiredFields) {
 			if (!fields[field]?.trim()) return;
 		}
-		execute({ ...fields, model });
-		// Track usage for THIS tool
-		trackExecution(tool.id);
+
+		if (isCaptionGenerator) {
+			setShowLengthModal(true);
+		} else {
+			execute({ ...fields, model });
+			trackExecution(tool.id);
+		}
 	};
 
-	// Check if all required fields are filled
-	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
+	const doExecute = useCallback(
+		async (lengthType: string) => {
+			setCaptionResult({});
+			setResult("");
+			setApiError(null);
+			setIsGenerating(true);
+			setShowLengthModal(false);
+
+			const executeBody = {
+				...fields,
+				model,
+				length_type: lengthType,
+			};
+
+			try {
+				const customApiKey = localStorage.getItem("oxloApiKey");
+				const headers: Record<string, string> = { "Content-Type": "application/json" };
+				if (customApiKey) {
+					headers["x-api-key"] = customApiKey;
+				}
+
+				const response = await fetch(`${apiBase}/${tool.id}`, {
+					method: "POST",
+					headers,
+					body: JSON.stringify(executeBody),
+				});
+
+				const data = await response.json();
+
+				if (data.error) {
+					setApiError(data.error);
+				} else if (data.variations || data.title) {
+					setCaptionResult({
+						variations: data.variations,
+						title: data.title,
+						platformName: data.metadata?.platform_name || data.metadata?.platform,
+						lengthType: data.metadata?.length_type || lengthType,
+					});
+					setResult(data.result || "");
+				} else {
+					setResult(data.result || JSON.stringify(data));
+				}
+			} catch (err) {
+				setApiError(err instanceof Error ? err.message : "Request failed");
+			}
+
+			setIsGenerating(false);
+			trackExecution(tool.id);
+		},
+		[fields, model, apiBase, tool.id, setResult, trackExecution]
+	);
 
 	return (
 		<>
@@ -202,10 +397,79 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-						<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						{apiError && !isGenerating && (
+							<div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+								<p className="text-sm font-medium text-destructive">{apiError}</p>
+								{apiError.includes("API key") && (
+									<p className="mt-1 text-xs text-muted-foreground">
+										Set your Oxlo API key in Settings to use this tool.
+									</p>
+								)}
+							</div>
+						)}
+						{isGenerating && !result && !captionResult.variations && !apiError && (
+							<div className="flex items-center justify-center py-8">
+								<div className="flex flex-col items-center gap-3">
+									<div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+									<span className="text-sm text-muted-foreground">Generating captions...</span>
+								</div>
+							</div>
+						)}
+						{isCaptionGenerator && (captionResult.variations || captionResult.title) ? (
+							<CaptionResultDisplay
+								variations={captionResult.variations}
+								title={captionResult.title}
+								platformName={captionResult.platformName}
+								lengthType={captionResult.lengthType}
+							/>
+						) : (
+							!isGenerating && <ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						)}
 					</div>
 				</div>
 			</ToolLayout>
+
+			{/* length Selector  */}
+			{showLengthModal && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+					<div className="relative mx-4 w-full max-w-sm rounded-2xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+						<button
+							onClick={() => setShowLengthModal(false)}
+							className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+						>
+							<X className="h-4 w-4" />
+						</button>
+
+						<div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+							<Play className="h-6 w-6 text-primary" />
+						</div>
+
+						<h3 className="text-center text-lg font-semibold">Caption Length</h3>
+						<p className="mt-1 text-center text-sm text-muted-foreground">
+							How long do you want your captions to be?
+						</p>
+
+						<div className="mt-5 flex gap-3">
+							<Button
+								variant="outline"
+								className="flex-1 h-auto flex-col gap-1 py-4"
+								onClick={() => doExecute("short")}
+							>
+								<span className="text-base font-semibold">Short</span>
+								<span className="text-xs text-muted-foreground">Quick & punchy</span>
+							</Button>
+							<Button
+								variant="outline"
+								className="flex-1 h-auto flex-col gap-1 py-4"
+								onClick={() => doExecute("long")}
+							>
+								<span className="text-base font-semibold">Long</span>
+								<span className="text-xs text-muted-foreground">Detailed & descriptive</span>
+							</Button>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* ─── Upgrade Dialog Popup ──────────────────────────── */}
 			{showUpgradeDialog && (
