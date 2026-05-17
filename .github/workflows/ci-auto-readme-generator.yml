@@ -1,0 +1,24 @@
+name: CI - auto-readme-generator
+
+on:
+  push:
+    paths:
+      - "services/python-tools/tools/auto-readme-generator/**"
+  pull_request:
+    paths:
+      - "services/python-tools/tools/auto-readme-generator/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r services/python-tools/tools/auto-readme-generator/requirements.txt -r services/python-tools/tools/auto-readme-generator/requirements-dev.txt
+      - name: Run tests
+        run: |
+          cd services/python-tools/tools/auto-readme-generator
+          pytest tests/ -v
