@@ -38,7 +38,11 @@ async def run(data: dict):
             return
 
         yield "[2/5] Planning required sections...\n"
-        section_plan = plan_sections(metadata)
+        try:
+            section_plan = plan_sections(metadata)
+        except Exception as exc:
+            yield f"[ERROR] Planner failed: {exc}\n"
+            return
 
         yield "[3/5] Writing README...\n"
         try:
@@ -48,7 +52,11 @@ async def run(data: dict):
             return
 
         yield "[4/5] Validating sections and badges...\n"
-        issues = validate_readme(readme_content, section_plan, metadata)
+        try:
+            issues = validate_readme(readme_content, section_plan, metadata)
+        except Exception as exc:
+            yield f"[WARN] Validator failed, returning unvalidated result: {exc}\n"
+            issues = []
 
         if issues:
             yield f"[5/5] Found {len(issues)} issue(s), refining...\n"
@@ -59,9 +67,14 @@ async def run(data: dict):
                     metadata,
                     section_plan,
                 )
-                issues = validate_readme(readme_content, section_plan, metadata)
             except Exception as exc:
                 yield f"[WARN] Refiner failed, returning best effort: {exc}\n"
+
+            try:
+                issues = validate_readme(readme_content, section_plan, metadata)
+            except Exception as exc:
+                yield f"[WARN] Post-refine validation failed: {exc}\n"
+                issues = []
         else:
             yield "[5/5] Validation passed.\n"
 

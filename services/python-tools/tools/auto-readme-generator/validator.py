@@ -3,7 +3,7 @@ from typing import Optional
 
 SHIELD_URL_PATTERN = re.compile(r"https?://[^\s\)\]]+")
 VALID_SHIELD_PREFIX = "https://img.shields.io/"
-FENCE_OPEN = re.compile(r"^`{3}(\w*)$")
+FENCE_OPEN = re.compile(r"^`{3}(\w*)(?:\s.*)?$")
 
 INSTALL_COMMANDS = {
     "npm": ["npm install", "npm ci"],

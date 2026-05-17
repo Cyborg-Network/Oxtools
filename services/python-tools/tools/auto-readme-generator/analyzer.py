@@ -92,17 +92,19 @@ async def analyze_project(name: str, description: str, tech_stack: str) -> dict:
         "entry_point, project_type (library|cli|web-api|web-app|other)."
     )
 
-    raw = await call_oxlo_chat(
-        ANALYZER_MODEL,
-        system_prompt,
-        user_prompt,
-        max_tokens=512,
-        temperature=0.2,
-    )
-
-    cleaned = _extract_json(raw)
-    parsed = _parse_json(cleaned)
     try:
+        raw = await call_oxlo_chat(
+            ANALYZER_MODEL,
+            system_prompt,
+            user_prompt,
+            max_tokens=512,
+            temperature=0.2,
+        )
+
+        cleaned = _extract_json(raw)
+        parsed = _parse_json(cleaned)
         return ProjectMetadata(**parsed).model_dump()
     except ValidationError:
+        return DEFAULT_METADATA.copy()
+    except Exception:
         return DEFAULT_METADATA.copy()

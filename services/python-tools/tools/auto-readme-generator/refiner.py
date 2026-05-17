@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 from llm_client import call_oxlo_chat
 from validator import validate_readme
@@ -17,8 +17,11 @@ async def refine_readme(
     issues: list,
     metadata: dict,
     section_plan: list,
-    call_model: Optional[Callable[[str, str, str, int, float], str]] = None,
+    call_model: Optional[Callable[[str, str, str, int, float], Awaitable[str]]] = None,
 ) -> str:
+    if not issues:
+        return content
+
     call_model = call_model or call_oxlo_chat
 
     for attempt in range(2):

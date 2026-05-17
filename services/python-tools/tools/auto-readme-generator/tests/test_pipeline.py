@@ -1,4 +1,4 @@
-import asyncio
+import pytest
 
 import analyzer
 import refiner
@@ -63,7 +63,8 @@ def _readme_other() -> str:
     )
 
 
-def test_pipeline_happy_path(monkeypatch):
+@pytest.mark.asyncio
+async def test_pipeline_happy_path(monkeypatch):
     async def fake_call_oxlo_chat(model, system_prompt, user_prompt, max_tokens=2048, temperature=0.3):
         if "project analyzer" in system_prompt.lower():
             return (
@@ -81,21 +82,20 @@ def test_pipeline_happy_path(monkeypatch):
     monkeypatch.setattr(writer, "call_oxlo_chat", fake_call_oxlo_chat)
     monkeypatch.setattr(refiner, "call_oxlo_chat", fake_call_oxlo_chat)
 
-    output = asyncio.run(
-        _collect_stream(
-            {
-                "projectName": "fastapi-auth",
-                "projectDescription": "Auth API with FastAPI",
-                "techStack": "Python, FastAPI",
-            }
-        )
+    output = await _collect_stream(
+        {
+            "projectName": "fastapi-auth",
+            "projectDescription": "Auth API with FastAPI",
+            "techStack": "Python, FastAPI",
+        }
     )
 
     assert "---RESULT---" in output
     assert "[ERROR]" not in output
 
 
-def test_pipeline_handles_malformed_analyzer_response(monkeypatch):
+@pytest.mark.asyncio
+async def test_pipeline_handles_malformed_analyzer_response(monkeypatch):
     async def fake_call_oxlo_chat(model, system_prompt, user_prompt, max_tokens=2048, temperature=0.3):
         if "project analyzer" in system_prompt.lower():
             return "not json"
@@ -113,14 +113,12 @@ def test_pipeline_handles_malformed_analyzer_response(monkeypatch):
 
     monkeypatch.setattr(tool, "write_readme", fake_write_readme)
 
-    output = asyncio.run(
-        _collect_stream(
-            {
-                "projectName": "unknown",
-                "projectDescription": "Test",
-                "techStack": "",
-            }
-        )
+    output = await _collect_stream(
+        {
+            "projectName": "unknown",
+            "projectDescription": "Test",
+            "techStack": "",
+        }
     )
 
     assert "---RESULT---" in output
@@ -128,7 +126,8 @@ def test_pipeline_handles_malformed_analyzer_response(monkeypatch):
     assert captured["metadata"] == analyzer.DEFAULT_METADATA
 
 
-def test_refiner_max_retries_returns_content():
+@pytest.mark.asyncio
+async def test_refiner_max_retries_returns_content():
     async def always_bad(model, system_prompt, user_prompt, max_tokens=2048, temperature=0.3):
         return "# Title\n```python\nprint('hi')\n"
 
@@ -137,14 +136,12 @@ def test_refiner_max_retries_returns_content():
     section_plan = ["Title"]
     issues = validate_readme(content, section_plan, metadata)
 
-    result = asyncio.run(
-        refiner.refine_readme(
-            content,
-            issues,
-            metadata,
-            section_plan,
-            call_model=always_bad,
-        )
+    result = await refiner.refine_readme(
+        content,
+        issues,
+        metadata,
+        section_plan,
+        call_model=always_bad,
     )
 
     assert result
