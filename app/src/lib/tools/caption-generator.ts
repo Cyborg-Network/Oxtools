@@ -1,4 +1,5 @@
-﻿import type { ToolDefinition } from "@/types";
+﻿import { CaptionResultDisplay } from "@/components/tools/caption-result-display";
+import type { ToolDefinition } from "@/types";
 
 export const captionGenerator: ToolDefinition = {
 	id: "caption-generator",
@@ -34,8 +35,11 @@ export const captionGenerator: ToolDefinition = {
 			label: "Caption Prompt",
 			type: "textarea",
 			rows: 6,
+			attachable: { accept: "image/jpeg,image/png,image/webp,image/gif" },
 			placeholder:
 				"E.g. 'We just launched our AI-powered developer tools platform. It has 22+ free tools for debugging, testing, and code generation.'",
 		},
 	],
+	ResultComponent: CaptionResultDisplay,
+	requireLengthSelection: true,
 };

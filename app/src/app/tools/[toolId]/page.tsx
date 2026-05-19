@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Label, Textarea } from "@ansospace/ui";
-import { ArrowUpRight, Check, Copy, Crown, Lock, Play, Plus, X } from "lucide-react";
+import { ArrowUpRight, Crown, Lock, Play, Plus, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
@@ -31,119 +31,8 @@ export default function DynamicToolPage() {
 	return <ToolPageContent toolId={tool.id} />;
 }
 
-function VariationCopyButton({ text }: { text: string }) {
-	const [copied, setCopied] = useState(false);
-	const handleCopy = useCallback(async () => {
-		await navigator.clipboard.writeText(text);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
-	}, [text]);
-
-	return (
-		<button
-			type="button"
-			onClick={handleCopy}
-			className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors hover:bg-primary/10 hover:text-primary data-[copied=true]:text-green-500"
-			data-copied={copied}
-		>
-			{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-			{copied ? "Copied" : "Copy"}
-		</button>
-	);
-}
-
-function CaptionResultDisplay({
-	variations,
-	title,
-	platformName,
-	lengthType,
-}: {
-	variations?: { text: string; chars: number; limit: number; title?: string }[];
-	title?: string | null;
-	platformName?: string;
-	lengthType?: string;
-}) {
-	const [activeIdx, setActiveIdx] = useState(0);
-	if (!variations || variations.length === 0) return null;
-
-	const v = variations[activeIdx];
-	const varTitle = v.title || title;
-	const copyText = varTitle ? `Title: ${varTitle}\n\nCaption: ${v.text}` : v.text;
-	const charRatio = v.chars / v.limit;
-	const barWidth = Math.min(charRatio * 100, 100);
-	const barColor =
-		charRatio > 1.0 ? "bg-red-500" : charRatio > 0.8 ? "bg-amber-500" : "bg-green-500";
-	const textColor =
-		charRatio > 1.0 ? "text-red-500" : charRatio > 0.8 ? "text-amber-500" : "text-green-500";
-
-	return (
-		<div className="space-y-4">
-			{platformName && (
-				<div className="flex items-center justify-between">
-					<h3 className="text-base font-semibold text-foreground">{platformName}</h3>
-					<span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-						{lengthType === "short" ? "Short" : "Long"}
-					</span>
-				</div>
-			)}
-
-			<div className="flex gap-1.5">
-				{variations.map((v, i) => (
-					<button
-						key={v.text}
-						type="button"
-						onClick={() => setActiveIdx(i)}
-						className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-							activeIdx === i
-								? "bg-primary text-primary-foreground"
-								: "bg-muted text-muted-foreground hover:bg-muted/80"
-						}`}
-					>
-						Variation {i + 1}
-					</button>
-				))}
-			</div>
-
-			<div className="space-y-2">
-				{varTitle && (
-					<div className="rounded-lg border border-primary/20 bg-primary/[0.02] p-3">
-						<div className="flex items-center justify-between">
-							<div>
-								<p className="text-xs text-muted-foreground mb-0.5">Title {activeIdx + 1}</p>
-								<p className="text-sm font-medium text-foreground">{varTitle}</p>
-							</div>
-							<VariationCopyButton text={varTitle} />
-						</div>
-					</div>
-				)}
-
-				<div className="rounded-lg border border-border bg-card p-4">
-					<div className="flex items-start justify-between gap-4">
-						<p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap flex-1 min-w-0">
-							{v.text}
-						</p>
-						<VariationCopyButton text={copyText} />
-					</div>
-					<div className="mt-3 flex items-center gap-2">
-						<div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-							<div
-								className={`${barColor} h-full rounded-full transition-all`}
-								style={{ width: `${barWidth}%` }}
-							/>
-						</div>
-						<span className={`shrink-0 text-xs font-medium ${textColor}`}>
-							{v.chars}/{v.limit}
-						</span>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
-}
-
 function ToolPageContent({ toolId }: { toolId: string }) {
 	const tool = getToolById(toolId)!;
-	const isCaptionGenerator = tool.id === "caption-generator";
 	// Model is hardcoded per tool - no user selection
 	const model = tool.defaultModel || "llama-3.3-70b";
 	const [fields, setFields] = useState<Record<string, string>>(() => {
@@ -155,18 +44,8 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		return initial;
 	});
 
-	// Caption-specific result data
-	const [captionResult, setCaptionResult] = useState<{
-		variations?: { text: string; chars: number; limit: number; title?: string }[];
-		title?: string | null;
-		platformName?: string;
-		lengthType?: string;
-	}>({});
-
 	// Length selector modal state
 	const [showLengthModal, setShowLengthModal] = useState(false);
-	const [isGenerating, setIsGenerating] = useState(false);
-	const [apiError, setApiError] = useState<string | null>(null);
 
 	// Tier2 tools MUST bypass Next.js proxy buffering to prevent silent timeouts on long executions
 	const runnerUrl = process.env.NEXT_PUBLIC_TOOL_RUNNER_URL || "http://localhost:9080";
@@ -188,7 +67,6 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 			}
 			setFields(restored);
 			setResult(restoredResult);
-			setCaptionResult({});
 		},
 		[tool, setResult]
 	);
@@ -208,25 +86,6 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		}
 	}, [mounted, toolUsage.limitReached]);
 
-	// Parse caption results when result changes
-	useEffect(() => {
-		if (isCaptionGenerator && result) {
-			try {
-				const data = JSON.parse(result);
-				if (data.variations || data.title) {
-					setCaptionResult({
-						variations: data.variations,
-						title: data.title,
-						platformName: data.metadata?.platform_name || data.metadata?.platform,
-						lengthType: data.metadata?.length_type,
-					});
-				}
-			} catch {
-				// Not JSON, ignore
-			}
-		}
-	}, [result, isCaptionGenerator]);
-
 	// Check if all required fields are filled
 	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
 
@@ -239,65 +98,13 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 			if (!fields[field]?.trim()) return;
 		}
 
-		if (isCaptionGenerator) {
+		if (tool.requireLengthSelection) {
 			setShowLengthModal(true);
 		} else {
 			execute({ ...fields, model });
 			trackExecution(tool.id);
 		}
 	};
-
-	const doExecute = useCallback(
-		async (lengthType: string) => {
-			setCaptionResult({});
-			setResult("");
-			setApiError(null);
-			setIsGenerating(true);
-			setShowLengthModal(false);
-
-			const executeBody = {
-				...fields,
-				model,
-				length_type: lengthType,
-			};
-
-			try {
-				const customApiKey = localStorage.getItem("oxloApiKey");
-				const headers: Record<string, string> = { "Content-Type": "application/json" };
-				if (customApiKey) {
-					headers["x-api-key"] = customApiKey;
-				}
-
-				const response = await fetch(`${apiBase}/${tool.id}`, {
-					method: "POST",
-					headers,
-					body: JSON.stringify(executeBody),
-				});
-
-				const data = await response.json();
-
-				if (data.error) {
-					setApiError(data.error);
-				} else if (data.variations || data.title) {
-					setCaptionResult({
-						variations: data.variations,
-						title: data.title,
-						platformName: data.metadata?.platform_name || data.metadata?.platform,
-						lengthType: data.metadata?.length_type || lengthType,
-					});
-					setResult(data.result || "");
-				} else {
-					setResult(data.result || JSON.stringify(data));
-				}
-			} catch (err) {
-				setApiError(err instanceof Error ? err.message : "Request failed");
-			}
-
-			setIsGenerating(false);
-			trackExecution(tool.id);
-		},
-		[fields, model, apiBase, tool.id, setResult, trackExecution]
-	);
 
 	return (
 		<>
@@ -315,13 +122,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 							config={input}
 							value={fields[input.key] || ""}
 							onChange={(value) => setField(input.key, value)}
-							{...(isCaptionGenerator && input.type === "textarea"
-								? {
-										onAttach: (_, dataUrl) => setField("image", dataUrl),
-										attachedImage: fields.image,
-										onRemoveImage: () => setField("image", ""),
-									}
-								: {})}
+							onFieldChange={(key, value) => setField(key, value)}
 						/>
 					))}
 
@@ -407,45 +208,21 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-						{apiError && !isGenerating && (
-							<div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-								<p className="text-sm font-medium text-destructive">{apiError}</p>
-								{apiError.includes("API key") && (
-									<p className="mt-1 text-xs text-muted-foreground">
-										Set your Oxlo API key in Settings to use this tool.
-									</p>
-								)}
-							</div>
-						)}
-						{isGenerating && !result && !captionResult.variations && !apiError && (
-							<div className="flex items-center justify-center py-8">
-								<div className="flex flex-col items-center gap-3">
-									<div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-									<span className="text-sm text-muted-foreground">Generating captions...</span>
-								</div>
-							</div>
-						)}
-						{isCaptionGenerator && (captionResult.variations || captionResult.title) ? (
-							<CaptionResultDisplay
-								variations={captionResult.variations}
-								title={captionResult.title}
-								platformName={captionResult.platformName}
-								lengthType={captionResult.lengthType}
-							/>
+						{tool.ResultComponent && result ? (
+							<tool.ResultComponent result={result} isLoading={isLoading} error={error} />
 						) : (
-							!isGenerating && (
-								<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
-							)
+							<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
 						)}
 					</div>
 				</div>
 			</ToolLayout>
 
-			{/* length Selector  */}
-			{showLengthModal && (
+			{/* Length selector modal (for tools that require it) */}
+			{tool.requireLengthSelection && showLengthModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
 					<div className="relative mx-4 w-full max-w-sm rounded-2xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
 						<button
+							type="button"
 							onClick={() => setShowLengthModal(false)}
 							className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 						>
@@ -465,7 +242,11 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 							<Button
 								variant="outline"
 								className="flex-1 h-auto flex-col gap-1 py-4"
-								onClick={() => doExecute("short")}
+								onClick={() => {
+									setShowLengthModal(false);
+									execute({ ...fields, model, length_type: "short" });
+									trackExecution(tool.id);
+								}}
 							>
 								<span className="text-base font-semibold">Short</span>
 								<span className="text-xs text-muted-foreground">Quick & punchy</span>
@@ -473,7 +254,11 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 							<Button
 								variant="outline"
 								className="flex-1 h-auto flex-col gap-1 py-4"
-								onClick={() => doExecute("long")}
+								onClick={() => {
+									setShowLengthModal(false);
+									execute({ ...fields, model, length_type: "long" });
+									trackExecution(tool.id);
+								}}
 							>
 								<span className="text-base font-semibold">Long</span>
 								<span className="text-xs text-muted-foreground">Detailed & descriptive</span>
@@ -573,20 +358,17 @@ function InputField({
 	config,
 	value,
 	onChange,
-	onAttach,
-	attachedImage,
-	onRemoveImage,
+	onFieldChange,
 }: {
 	config: InputFieldConfig;
 	value: string;
 	onChange: (value: string) => void;
-	onAttach?: (key: string, dataUrl: string) => void;
-	attachedImage?: string;
-	onRemoveImage?: () => void;
+	onFieldChange?: (key: string, value: string) => void;
 }) {
 	const textareaFileRef = useRef<HTMLInputElement>(null);
 	const [textareaShowPreview, setTextareaShowPreview] = useState(false);
 	const [textareaSpinning, setTextareaSpinning] = useState(false);
+	const [textareaAttachedImage, setTextareaAttachedImage] = useState("");
 
 	switch (config.type) {
 		case "code":
@@ -603,7 +385,7 @@ function InputField({
 			);
 
 		case "textarea": {
-			const hasImage = onAttach && attachedImage;
+			const hasImage = config.attachable && !!textareaAttachedImage;
 			return (
 				<div className="space-y-2">
 					<Label>{config.label}</Label>
@@ -619,11 +401,18 @@ function InputField({
 									onClick={() => setTextareaShowPreview(true)}
 									className="h-12 w-12 overflow-hidden rounded-md border border-input shadow-xs hover:shadow-md transition-shadow"
 								>
-									<img src={attachedImage} alt="Attached" className="h-full w-full object-cover" />
+									<img
+										src={textareaAttachedImage}
+										alt="Attached"
+										className="h-full w-full object-cover"
+									/>
 								</button>
 								<button
 									type="button"
-									onClick={onRemoveImage}
+									onClick={() => {
+										setTextareaAttachedImage("");
+										onFieldChange?.("image", "");
+									}}
 									className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-background border border-input shadow-xs hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors"
 								>
 									<X className="h-3 w-3" />
@@ -639,7 +428,7 @@ function InputField({
 								hasImage ? "pl-20" : "pl-14"
 							} min-h-[120px]`}
 						/>
-						{onAttach && (
+						{config.attachable && (
 							<>
 								<button
 									type="button"
@@ -659,14 +448,16 @@ function InputField({
 								<input
 									ref={textareaFileRef}
 									type="file"
-									accept="image/jpeg,image/png,image/webp,image/gif"
+									accept={config.attachable.accept}
 									className="hidden"
 									onChange={(e) => {
 										const file = e.target.files?.[0];
 										if (!file) return;
 										const reader = new FileReader();
 										reader.onloadend = () => {
-											onAttach(config.key, reader.result as string);
+											const dataUrl = reader.result as string;
+											setTextareaAttachedImage(dataUrl);
+											onFieldChange?.("image", dataUrl);
 										};
 										reader.readAsDataURL(file);
 									}}
@@ -681,7 +472,7 @@ function InputField({
 							onClick={() => setTextareaShowPreview(false)}
 						>
 							<img
-								src={attachedImage}
+								src={textareaAttachedImage}
 								alt="Preview"
 								className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl animate-in zoom-in-95 duration-200"
 							/>
