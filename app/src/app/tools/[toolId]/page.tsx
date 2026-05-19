@@ -1,9 +1,9 @@
 "use client";
 
 import { Button, Label, Textarea } from "@ansospace/ui";
-import { ArrowUpRight, Check, Copy, Crown, Lock, Play, X } from "lucide-react";
+import { ArrowUpRight, Check, Copy, Crown, Lock, Play, Plus, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
@@ -312,6 +312,13 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 							config={input}
 							value={fields[input.key] || ""}
 							onChange={(value) => setField(input.key, value)}
+							{...(isCaptionGenerator && input.type === "textarea"
+								? {
+										onAttach: (_, dataUrl) => setField("image", dataUrl),
+										attachedImage: fields.image,
+										onRemoveImage: () => setField("image", ""),
+								  }
+								: {})}
 						/>
 					))}
 
@@ -561,10 +568,16 @@ function InputField({
 	config,
 	value,
 	onChange,
+	onAttach,
+	attachedImage,
+	onRemoveImage,
 }: {
 	config: InputFieldConfig;
 	value: string;
 	onChange: (value: string) => void;
+	onAttach?: (key: string, dataUrl: string) => void;
+	attachedImage?: string;
+	onRemoveImage?: () => void;
 }) {
 	switch (config.type) {
 		case "code":
@@ -580,19 +593,99 @@ function InputField({
 				</div>
 			);
 
-		case "textarea":
+		case "textarea": {
+			const fileRef = useRef<HTMLInputElement>(null);
+			const [showPreview, setShowPreview] = useState(false);
+			const [spinning, setSpinning] = useState(false);
+			const hasImage = onAttach && attachedImage;
 			return (
 				<div className="space-y-2">
 					<Label>{config.label}</Label>
-					<Textarea
-						value={value}
-						onChange={(e) => onChange(e.target.value)}
-						placeholder={config.placeholder}
-						rows={config.rows || 4}
-						className="resize-none"
-					/>
+					<div
+						className={`relative rounded-md border border-input bg-background transition-all duration-200 ${
+							hasImage ? "ring-1 ring-primary/20" : ""
+						} ${hasImage ? "focus-within:ring-2 focus-within:ring-primary/30" : ""}`}
+					>
+						{hasImage && (
+							<div className="absolute left-2 top-2 z-10">
+								<div
+									onClick={() => setShowPreview(true)}
+									className="relative h-12 w-12 cursor-pointer overflow-hidden rounded-md border border-input shadow-xs hover:shadow-md transition-shadow"
+								>
+									<img
+										src={attachedImage}
+										alt="Attached"
+										className="h-full w-full object-cover"
+									/>
+									<button
+										type="button"
+										onClick={(e) => { e.stopPropagation(); onRemoveImage?.(); }}
+										className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-background border border-input shadow-xs hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors"
+									>
+										<X className="h-3 w-3" />
+									</button>
+								</div>
+							</div>
+						)}
+						<Textarea
+							value={value}
+							onChange={(e) => onChange(e.target.value)}
+							placeholder={config.placeholder}
+							rows={config.rows || 4}
+							className={`resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 ${
+								hasImage ? "pl-20" : "pl-14"
+							} min-h-[120px]`}
+						/>
+						{onAttach && (
+							<>
+								<button
+									type="button"
+									onClick={() => {
+										setSpinning(true);
+										fileRef.current?.click();
+										setTimeout(() => setSpinning(false), 400);
+									}}
+									className="absolute bottom-2 left-2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-primary transition-colors"
+								>
+									<Plus
+										className={`h-4 w-4 transition-transform duration-300 ${
+											spinning ? "rotate-180 scale-110" : ""
+										}`}
+									/>
+								</button>
+								<input
+									ref={fileRef}
+									type="file"
+									accept="image/jpeg,image/png,image/webp,image/gif"
+									className="hidden"
+									onChange={(e) => {
+										const file = e.target.files?.[0];
+										if (!file) return;
+										const reader = new FileReader();
+										reader.onloadend = () => {
+											onAttach(config.key, reader.result as string);
+										};
+										reader.readAsDataURL(file);
+									}}
+								/>
+							</>
+						)}
+					</div>
+					{hasImage && showPreview && (
+						<div
+							className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+							onClick={() => setShowPreview(false)}
+						>
+							<img
+								src={attachedImage}
+								alt="Preview"
+								className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl animate-in zoom-in-95 duration-200"
+							/>
+						</div>
+					)}
 				</div>
 			);
+		}
 
 		case "select":
 			return (

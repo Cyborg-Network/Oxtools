@@ -33,14 +33,9 @@ export const captionGenerator: ToolDefinition = {
 			key: "prompt",
 			label: "Caption Prompt",
 			type: "textarea",
-			rows: 4,
+			rows: 6,
 			placeholder:
 				"E.g. 'We just launched our AI-powered developer tools platform. It has 22+ free tools for debugging, testing, and code generation.'",
-		},
-		{
-			key: "image",
-			label: "Image (optional)",
-			type: "image",
 		},
 	],
 };
