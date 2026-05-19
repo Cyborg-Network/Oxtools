@@ -6,58 +6,15 @@ Uses LLM to refine extracted colors, assign UI roles, and ensure accessibility.
 
 import json
 import logging
-import sys
-from importlib.util import spec_from_file_location, module_from_spec
 from pathlib import Path
 from typing import Dict, Any
+
+from config import LLM, REFINEMENT_SYSTEM_PROMPT
+from color_extractor import ColorExtractor
 
 logger = logging.getLogger(__name__)
 
 _TOOL_DIR = Path(__file__).parent
-
-# Explicit file path loading to avoid module collisions
-def _load_module_from_file(filename: str):
-    """Load a module explicitly from a file path to avoid collisions."""
-    module_name = filename.replace('.py', '')
-    
-    # Clear from sys.modules cache to force fresh load
-    if module_name in sys.modules:
-        del sys.modules[module_name]
-    
-    module_path = _TOOL_DIR / filename
-    
-    if not module_path.exists():
-        raise FileNotFoundError(f"Module file not found: {module_path}")
-    
-    spec = spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load spec for {module_path}")
-    
-    module = module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-def _get_config():
-    """Load config module from explicit file path."""
-    config = _load_module_from_file('config.py')
-    
-    if not hasattr(config, 'LLM'):
-        raise RuntimeError(f"Config module from {_TOOL_DIR / 'config.py'} does not have LLM attribute. Loaded from: {config.__file__}")
-    
-    if config.LLM is None:
-        raise RuntimeError("LLM is None - OXLO_API_KEY environment variable not set")
-    
-    return config.LLM, config.REFINEMENT_SYSTEM_PROMPT
-
-def _get_extractor():
-    """Load color extractor from explicit file path."""
-    color_extractor = _load_module_from_file('color_extractor.py')
-    return color_extractor.ColorExtractor
-
-
-def _get_llm_and_prompt():
-    """Load the local LLM config lazily."""
-    return _get_config()
 
 
 class PaletteRefiner:
@@ -66,7 +23,7 @@ class PaletteRefiner:
     def __init__(self, llm=None):
         """Initialize refiner with LLM."""
         if llm is None:
-            llm, _ = _get_llm_and_prompt()
+            llm = LLM
         
         self.llm = llm
         if not self.llm:
@@ -106,9 +63,8 @@ Return a valid JSON object following the structure specified in your system prom
             
             # Call LLM
             logger.info("Calling LLM for palette refinement...")
-            _, refinement_system_prompt = _get_llm_and_prompt()
             response = await self.llm.ainvoke([
-                {"role": "system", "content": refinement_system_prompt},
+                {"role": "system", "content": REFINEMENT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
             ])
             
@@ -238,7 +194,6 @@ Return a valid JSON object following the structure specified in your system prom
         Returns:
             Adjusted palette ensuring contrast compliance
         """
-        ColorExtractor = _get_extractor()
         extractor = ColorExtractor()
         min_contrast = 4.5  # WCAG AA for normal text
         

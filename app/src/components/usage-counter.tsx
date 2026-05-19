@@ -10,7 +10,7 @@ import { useAuth } from "@/providers/auth-provider";
  * Shows upgrade prompt when approaching or at limit.
  */
 export function UsageCounter() {
-	const { usage, isLoading, isAuthenticated, redirectToLogin, redirectToUpgrade } = useAuth();
+	const { user, usage, isLoading, isAuthenticated, redirectToLogin, redirectToUpgrade } = useAuth();
 
 	if (isLoading) {
 		return (
@@ -24,7 +24,7 @@ export function UsageCounter() {
 	const percentage = usage.limit > 0 ? (usage.used / usage.limit) * 100 : 0;
 	const isWarning = percentage >= 80;
 	const isExhausted = usage.limitReached;
-	const planName = getPlanDisplayName(usage.plan);
+	const planName = getPlanDisplayName(user?.plan_id ?? usage.plan);
 
 	return (
 		<div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2.5">
