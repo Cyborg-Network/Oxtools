@@ -68,11 +68,13 @@ function CaptionResultDisplay({
 
 	const v = variations[activeIdx];
 	const varTitle = v.title || title;
-	const copyText = varTitle ? "Title: " + varTitle + "\n\nCaption: " + v.text : v.text;
+	const copyText = varTitle ? `Title: ${varTitle}\n\nCaption: ${v.text}` : v.text;
 	const charRatio = v.chars / v.limit;
 	const barWidth = Math.min(charRatio * 100, 100);
-	const barColor = charRatio > 1.0 ? "bg-red-500" : charRatio > 0.8 ? "bg-amber-500" : "bg-green-500";
-	const textColor = charRatio > 1.0 ? "text-red-500" : charRatio > 0.8 ? "text-amber-500" : "text-green-500";
+	const barColor =
+		charRatio > 1.0 ? "bg-red-500" : charRatio > 0.8 ? "bg-amber-500" : "bg-green-500";
+	const textColor =
+		charRatio > 1.0 ? "text-red-500" : charRatio > 0.8 ? "text-amber-500" : "text-green-500";
 
 	return (
 		<div className="space-y-4">
@@ -86,9 +88,9 @@ function CaptionResultDisplay({
 			)}
 
 			<div className="flex gap-1.5">
-				{variations.map((_, i) => (
+				{variations.map((v, i) => (
 					<button
-						key={i}
+						key={v.text}
 						type="button"
 						onClick={() => setActiveIdx(i)}
 						className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -124,9 +126,12 @@ function CaptionResultDisplay({
 					</div>
 					<div className="mt-3 flex items-center gap-2">
 						<div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-							<div className={barColor + " h-full rounded-full transition-all"} style={{ width: barWidth + "%" }} />
+							<div
+								className={`${barColor} h-full rounded-full transition-all`}
+								style={{ width: `${barWidth}%` }}
+							/>
 						</div>
-						<span className={"shrink-0 text-xs font-medium " + textColor}>
+						<span className={`shrink-0 text-xs font-medium ${textColor}`}>
 							{v.chars}/{v.limit}
 						</span>
 					</div>
@@ -196,7 +201,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const [mounted, setMounted] = useState(false);
 	useEffect(() => setMounted(true), []);
 
-// Show popup when limit is newly reached
+	// Show popup when limit is newly reached
 	useEffect(() => {
 		if (mounted && toolUsage.limitReached) {
 			setShowUpgradeDialog(true);
@@ -315,7 +320,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 										onAttach: (_, dataUrl) => setField("image", dataUrl),
 										attachedImage: fields.image,
 										onRemoveImage: () => setField("image", ""),
-								  }
+									}
 								: {})}
 						/>
 					))}
@@ -428,7 +433,9 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								lengthType={captionResult.lengthType}
 							/>
 						) : (
-							!isGenerating && <ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+							!isGenerating && (
+								<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+							)
 						)}
 					</div>
 				</div>
@@ -577,6 +584,10 @@ function InputField({
 	attachedImage?: string;
 	onRemoveImage?: () => void;
 }) {
+	const textareaFileRef = useRef<HTMLInputElement>(null);
+	const [textareaShowPreview, setTextareaShowPreview] = useState(false);
+	const [textareaSpinning, setTextareaSpinning] = useState(false);
+
 	switch (config.type) {
 		case "code":
 			return (
@@ -592,9 +603,6 @@ function InputField({
 			);
 
 		case "textarea": {
-			const fileRef = useRef<HTMLInputElement>(null);
-			const [showPreview, setShowPreview] = useState(false);
-			const [spinning, setSpinning] = useState(false);
 			const hasImage = onAttach && attachedImage;
 			return (
 				<div className="space-y-2">
@@ -606,23 +614,20 @@ function InputField({
 					>
 						{hasImage && (
 							<div className="absolute left-2 top-2 z-10">
-								<div
-									onClick={() => setShowPreview(true)}
-									className="relative h-12 w-12 cursor-pointer overflow-hidden rounded-md border border-input shadow-xs hover:shadow-md transition-shadow"
+								<button
+									type="button"
+									onClick={() => setTextareaShowPreview(true)}
+									className="h-12 w-12 overflow-hidden rounded-md border border-input shadow-xs hover:shadow-md transition-shadow"
 								>
-									<img
-										src={attachedImage}
-										alt="Attached"
-										className="h-full w-full object-cover"
-									/>
-									<button
-										type="button"
-										onClick={(e) => { e.stopPropagation(); onRemoveImage?.(); }}
-										className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-background border border-input shadow-xs hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors"
-									>
-										<X className="h-3 w-3" />
-									</button>
-								</div>
+									<img src={attachedImage} alt="Attached" className="h-full w-full object-cover" />
+								</button>
+								<button
+									type="button"
+									onClick={onRemoveImage}
+									className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-background border border-input shadow-xs hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors"
+								>
+									<X className="h-3 w-3" />
+								</button>
 							</div>
 						)}
 						<Textarea
@@ -639,20 +644,20 @@ function InputField({
 								<button
 									type="button"
 									onClick={() => {
-										setSpinning(true);
-										fileRef.current?.click();
-										setTimeout(() => setSpinning(false), 400);
+										setTextareaSpinning(true);
+										textareaFileRef.current?.click();
+										setTimeout(() => setTextareaSpinning(false), 400);
 									}}
 									className="absolute bottom-2 left-2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-primary transition-colors"
 								>
 									<Plus
 										className={`h-4 w-4 transition-transform duration-300 ${
-											spinning ? "rotate-180 scale-110" : ""
+											textareaSpinning ? "rotate-180 scale-110" : ""
 										}`}
 									/>
 								</button>
 								<input
-									ref={fileRef}
+									ref={textareaFileRef}
 									type="file"
 									accept="image/jpeg,image/png,image/webp,image/gif"
 									className="hidden"
@@ -669,17 +674,18 @@ function InputField({
 							</>
 						)}
 					</div>
-					{hasImage && showPreview && (
-						<div
-							className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
-							onClick={() => setShowPreview(false)}
+					{hasImage && textareaShowPreview && (
+						<button
+							type="button"
+							className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+							onClick={() => setTextareaShowPreview(false)}
 						>
 							<img
 								src={attachedImage}
 								alt="Preview"
 								className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl animate-in zoom-in-95 duration-200"
 							/>
-						</div>
+						</button>
 					)}
 				</div>
 			);
@@ -834,7 +840,7 @@ function InputField({
 											)
 										);
 										const valid = Array.from(files).filter((f) => {
-											const ext = "." + f.name.split(".").pop()?.toLowerCase();
+											const ext = `.${f.name.split(".").pop()?.toLowerCase()}`;
 											const p = f.webkitRelativePath || f.name;
 											if (
 												p.includes("__pycache__") ||
