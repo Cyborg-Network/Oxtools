@@ -7,6 +7,7 @@ import { saveToolHistory } from "@/lib/history-db";
 interface UseToolExecutionOptions {
 	apiEndpoint: string;
 	toolId?: string;
+	timeoutMs?: number;
 }
 
 export interface ToolError {
@@ -27,11 +28,14 @@ interface UseToolExecutionReturn {
 export function useToolExecution({
 	apiEndpoint,
 	toolId: explicitToolId,
+	timeoutMs = 30_000,
 }: UseToolExecutionOptions): UseToolExecutionReturn {
 	const [result, setResult] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<ToolError | null>(null);
+	const timeoutErrorRef = useRef(false);
 	const abortControllerRef = useRef<AbortController | null>(null);
+	const timeoutIdRef = useRef<NodeJS.Timeout | null>(null);
 
 	const toolId = explicitToolId || apiEndpoint.split("/").pop();
 
@@ -40,6 +44,10 @@ export function useToolExecution({
 			if (abortControllerRef.current) {
 				abortControllerRef.current.abort();
 			}
+			if (timeoutIdRef.current) {
+				clearTimeout(timeoutIdRef.current);
+			}
+			timeoutErrorRef.current = false;
 
 			const controller = new AbortController();
 			abortControllerRef.current = controller;
@@ -47,6 +55,23 @@ export function useToolExecution({
 			setIsLoading(true);
 			setError(null);
 			setResult("");
+
+			// Set a timeout of 120 seconds for image processing tools, 30 seconds for others
+			const executionTimeoutMs = toolId === "color-palette" ? 120000 : timeoutMs;
+
+			const executionTimeoutId = setTimeout(() => {
+				timeoutErrorRef.current = true;
+				controller.abort();
+				setError({
+					message:
+						"Request timeout. The process is taking too long. Please try with a smaller image or check your connection.",
+					code: "timeout",
+					action: "retry",
+				});
+				setIsLoading(false);
+			}, executionTimeoutMs);
+
+			timeoutIdRef.current = executionTimeoutId;
 
 			try {
 				const customApiKey = localStorage.getItem("oxloApiKey");
@@ -80,7 +105,14 @@ export function useToolExecution({
 
 				if (contentType.includes("application/json")) {
 					const data = await response.json();
-					finalResult = data.result || JSON.stringify(data);
+					if (toolId === "color-palette" && typeof body.image === "string") {
+						finalResult = JSON.stringify({
+							...data,
+							image: data.image || body.image,
+						});
+					} else {
+						finalResult = data.result || JSON.stringify(data);
+					}
 					setResult(finalResult);
 				} else if (response.body) {
 					const reader = response.body.getReader();
@@ -105,13 +137,28 @@ export function useToolExecution({
 					});
 				}
 			} catch (err) {
-				if (err instanceof DOMException && err.name === "AbortError") return;
+				if (err instanceof DOMException && err.name === "AbortError") {
+					// Request was aborted (either by timeout or user action)
+					if (!timeoutErrorRef.current) {
+						setError({
+							message: "Request was cancelled. Please try again.",
+							code: "aborted",
+						});
+					}
+					setResult("");
+					return;
+				}
 				const message = err instanceof Error ? err.message : "An unexpected error occurred";
 				setError({ message, code: "client_error" });
 				setResult("");
 			} finally {
+				clearTimeout(executionTimeoutId);
 				setIsLoading(false);
 				abortControllerRef.current = null;
+				if (timeoutIdRef.current) {
+					clearTimeout(timeoutIdRef.current);
+					timeoutIdRef.current = null;
+				}
 			}
 		},
 		[apiEndpoint, toolId]
@@ -121,6 +168,11 @@ export function useToolExecution({
 		if (abortControllerRef.current) {
 			abortControllerRef.current.abort();
 		}
+		if (timeoutIdRef.current) {
+			clearTimeout(timeoutIdRef.current);
+			timeoutIdRef.current = null;
+		}
+		timeoutErrorRef.current = false;
 		setResult("");
 		setError(null);
 		setIsLoading(false);

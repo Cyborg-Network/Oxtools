@@ -24,7 +24,7 @@ export function UsageCounter() {
 	const percentage = usage.limit > 0 ? (usage.used / usage.limit) * 100 : 0;
 	const isWarning = percentage >= 80;
 	const isExhausted = usage.limitReached;
-	const planName = getPlanDisplayName(usage.plan);
+	const planName = getPlanDisplayName(user?.plan_id ?? usage.plan);
 
 	return (
 		<div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2.5">
@@ -71,6 +71,7 @@ export function UsageCounter() {
 
 			{!isAuthenticated && !isExhausted && (
 				<button
+					type="button"
 					onClick={redirectToLogin}
 					className="w-full text-[10px] text-primary hover:underline underline-offset-2 text-center"
 				>

@@ -1,9 +1,9 @@
 "use client";
-
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
+import NextImage from "next/image";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
@@ -14,27 +14,62 @@ import { getToolById } from "@/lib/tools/registry";
 import { useAuth } from "@/providers/auth-provider";
 import type { InputFieldConfig } from "@/types";
 
+// Helper function to compress images using canvas
+async function compressImage(base64: string, quality: number = 0.8): Promise<string> {
+	return new Promise((resolve) => {
+		const img = document.createElement("img");
+		img.onload = () => {
+			const canvas = document.createElement("canvas");
+			let width = img.width;
+			let height = img.height;
+
+			// Scale down if image is too large (max 2000px on longest side)
+			const maxDim = 2000;
+			if (width > maxDim || height > maxDim) {
+				const ratio = Math.min(maxDim / width, maxDim / height);
+				width = Math.floor(width * ratio);
+				height = Math.floor(height * ratio);
+			}
+
+			canvas.width = width;
+			canvas.height = height;
+
+			const ctx = canvas.getContext("2d");
+			if (ctx) {
+				ctx.drawImage(img, 0, 0, width, height);
+				const compressed = canvas.toDataURL("image/jpeg", quality);
+				resolve(compressed);
+			} else {
+				resolve(base64);
+			}
+		};
+		img.onerror = () => resolve(base64);
+		img.src = base64;
+	});
+}
+
 /**
  * Dynamic tool page - renders any tool from the registry.
  *
  * Contributors only need to create a ToolDefinition file in
  * src/lib/tools/<tool-id>.ts - this page handles the rest.
  */
+
 export default function DynamicToolPage() {
 	const params = useParams<{ toolId: string }>();
 	const tool = getToolById(params.toolId);
-
 	if (!tool || tool.status !== "active") {
 		notFound();
 	}
-
 	return <ToolPageContent toolId={tool.id} />;
 }
 
 function ToolPageContent({ toolId }: { toolId: string }) {
 	const tool = getToolById(toolId)!;
+
 	// Model is hardcoded per tool - no user selection
 	const model = tool.defaultModel || "llama-3.3-70b";
+
 	const [fields, setFields] = useState<Record<string, string>>(() => {
 		const initial: Record<string, string> = {};
 		for (const input of tool.inputs) {
@@ -50,6 +85,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const { result, isLoading, error, execute, setResult } = useToolExecution({
 		apiEndpoint: `${apiBase}/${tool.id}`,
 		toolId: tool.id,
+		...(tool.timeoutMs && { timeoutMs: tool.timeoutMs }),
 	});
 
 	const setField = useCallback((key: string, value: string) => {
@@ -69,12 +105,31 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	);
 
 	const { canExecute, getToolUsage, trackExecution, redirectToUpgrade } = useAuth();
-	const toolUsage = getToolUsage(tool.id);
-	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-	// Defer localStorage-dependent rendering to prevent hydration mismatch.
-	// Server always renders the "Run" button; limit state only applies after mount.
+
+	// ── HYDRATION FIX ──────────────────────────────────────────────────────────
+	// getToolUsage reads from localStorage/cookies which don't exist on the server.
+	// We defer the real value until after mount so SSR and client agree on the
+	// initial render (both see the zero/default state), then the effect below
+	// runs on the client and updates to the real value.
 	const [mounted, setMounted] = useState(false);
 	useEffect(() => setMounted(true), []);
+
+	// Always call the hook (Rules of Hooks) — but only use its value post-mount.
+	const rawToolUsage = getToolUsage(tool.id);
+	const toolUsage = mounted
+		? rawToolUsage
+		: {
+				// Issue 8: use optional chaining + safe defaults to prevent SSR TypeError
+				// when getToolUsage returns undefined or an incomplete object before hydration.
+				used: 0,
+				limit: rawToolUsage?.limit ?? 0,
+				remaining: rawToolUsage?.limit ?? 0,
+				limitReached: false,
+				plan: rawToolUsage?.plan ?? "free",
+			};
+	// ── END HYDRATION FIX ──────────────────────────────────────────────────────
+
+	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
 
 	// Show popup when limit is newly reached
 	useEffect(() => {
@@ -100,6 +155,11 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 
 	// Check if all required fields are filled
 	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
+
+	const uploadedImageSrc = useMemo(() => {
+		const imageKey = tool.inputs.find((i) => i.type === "image")?.key;
+		return imageKey ? fields[imageKey] : undefined;
+	}, [tool.inputs, fields]);
 
 	return (
 		<>
@@ -135,6 +195,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								<p className="text-xs text-muted-foreground">
 									Upgrade your plan for more daily executions.{" "}
 									<button
+										type="button"
 										onClick={redirectToUpgrade}
 										className="text-primary hover:underline underline-offset-2"
 									>
@@ -153,6 +214,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 						{/* Deferred until after mount to prevent hydration mismatch from localStorage */}
 						<div className="flex items-center gap-2">
 							<div
+								suppressHydrationWarning
 								className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
 									!mounted
 										? "bg-primary/10 text-primary"
@@ -164,6 +226,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								}`}
 							>
 								<span
+									suppressHydrationWarning
 									className={`h-1.5 w-1.5 rounded-full ${
 										!mounted
 											? "bg-primary"
@@ -191,6 +254,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for
 								this tool today.{" "}
 								<button
+									type="button"
 									onClick={redirectToUpgrade}
 									className="underline underline-offset-2 hover:text-amber-400"
 								>
@@ -202,7 +266,15 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-						<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						{/* Issue 19: derive the image src from whichever input has type==='image',
+					    instead of hardcoding fields['image']. */}
+						<ResultViewer
+							result={result}
+							isLoading={isLoading}
+							error={error}
+							streaming
+							uploadedImageSrc={uploadedImageSrc}
+						/>
 					</div>
 				</div>
 			</ToolLayout>
@@ -213,6 +285,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					<div className="relative mx-4 w-full max-w-md rounded-2xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
 						{/* Close button */}
 						<button
+							type="button"
 							onClick={() => setShowUpgradeDialog(false)}
 							className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 						>
@@ -292,7 +365,6 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 // ---------------------------------------------------------------------------
 // Generic input renderer - renders any InputFieldConfig
 // ---------------------------------------------------------------------------
-
 function InputField({
 	config,
 	value,
@@ -315,7 +387,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "textarea":
 			return (
 				<div className="space-y-2">
@@ -329,7 +400,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "select":
 			return (
 				<div className="space-y-2">
@@ -349,7 +419,6 @@ function InputField({
 					</div>
 				</div>
 			);
-
 		case "text":
 			return (
 				<div className="space-y-2">
@@ -363,7 +432,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "image":
 			return (
 				<div className="space-y-2">
@@ -372,12 +440,38 @@ function InputField({
 						<input
 							type="file"
 							accept="image/*"
-							onChange={(e) => {
+							onChange={async (e) => {
 								const file = e.target.files?.[0];
 								if (!file) return;
+
+								// Validate file size (max 5MB raw)
+								const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+								if (file.size > MAX_FILE_SIZE) {
+									alert(
+										`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB. Please compress or resize the image.`
+									);
+									return;
+								}
+
 								const reader = new FileReader();
-								reader.onloadend = () => {
-									onChange(reader.result as string); // base64 string
+								reader.onloadend = async () => {
+									let base64 = reader.result as string;
+
+									// If image is still large when base64, try to compress it
+									if (base64.length > 3 * 1024 * 1024) {
+										// Attempt compression via canvas
+										base64 = await compressImage(base64);
+									}
+
+									// Final validation
+									if (base64.length > 4 * 1024 * 1024) {
+										alert(
+											"Image data is still too large after compression. Please use a smaller image."
+										);
+										return;
+									}
+
+									onChange(base64);
 								};
 								reader.readAsDataURL(file);
 							}}
@@ -385,10 +479,11 @@ function InputField({
 						/>
 						{value && (
 							<div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border">
-								<img src={value} alt="Preview" className="h-full w-full object-cover" />
+								<NextImage src={value} alt="Preview" fill className="object-cover" unoptimized />
 							</div>
 						)}
 					</div>
+					<p className="text-xs text-muted-foreground">{config.helperText}</p>
 				</div>
 			);
 
@@ -479,7 +574,7 @@ function InputField({
 											)
 										);
 										const valid = Array.from(files).filter((f) => {
-											const ext = "." + f.name.split(".").pop()?.toLowerCase();
+											const ext = `.${f.name.split(".").pop()?.toLowerCase()}`;
 											const p = f.webkitRelativePath || f.name;
 											if (
 												p.includes("__pycache__") ||

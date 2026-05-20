@@ -22,6 +22,7 @@ import {
 	Server,
 	Settings,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -72,6 +73,7 @@ function CollapsibleCategory({
 		<div className="group-data-[collapsible=icon]:hidden">
 			{/* Category header with icon */}
 			<button
+				type="button"
 				onClick={() => {
 					setIsOpen(!isOpen);
 					router.push(`/tools#${categoryKey}`);
@@ -155,7 +157,13 @@ export function AppSidebar() {
 					<SidebarMenuItem>
 						<SidebarMenuButton size="lg" render={<Link href="/tools" />} tooltip="Oxtools">
 							<span className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shrink-0">
-								<img src="/logo-icon-teal.png" alt="Oxlo" className="h-7 w-7 object-contain" />
+								<Image
+									src="/logo-icon-teal.png"
+									alt="Oxlo"
+									width={28}
+									height={28}
+									className="h-7 w-7 object-contain"
+								/>
 							</span>
 							<div className="grid flex-1 text-left text-sm leading-tight">
 								<span
@@ -286,6 +294,7 @@ function UsageCounter() {
 				{/* Upgrade link for free users */}
 				{planId === "free" && (
 					<button
+						type="button"
 						onClick={redirectToUpgrade}
 						className="w-full text-[10px] text-center text-primary hover:underline underline-offset-2"
 					>
