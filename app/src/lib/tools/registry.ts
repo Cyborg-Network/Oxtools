@@ -3,6 +3,7 @@ import type { CategoryInfo, ToolCategory, ToolDefinition } from "@/types";
 import { apiChangeAnalyzer } from "./api-change-analyzer";
 import { apiValidator } from "./api-validator";
 import { architectureDiagram } from "./architecture-diagram";
+import { autoReadmeGeneratorTool } from "./auto-readme-generator";
 import { bugReplayer } from "./bug-replayer";
 import { captionGenerator } from "./caption-generator";
 // --- Core tool definitions ---
@@ -114,6 +115,7 @@ export const tools: ToolDefinition[] = [
 	captionGenerator,
 	seoWriter,
 	deepResearch, // Tier 2: LangGraph multi-agent Python service
+	autoReadmeGeneratorTool,
 ];
 
 // ---------------------------------------------------------------------------
