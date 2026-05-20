@@ -77,6 +77,7 @@ interface ResultViewerProps {
 	isLoading?: boolean;
 	error?: ToolError | string | null;
 	streaming?: boolean;
+	uploadedImageSrc?: string;
 	onOpenSettings?: () => void;
 }
 
@@ -217,6 +218,7 @@ export function ResultViewer({
 	isLoading,
 	error,
 	streaming,
+	uploadedImageSrc,
 	onOpenSettings,
 }: ResultViewerProps) {
 	const [copiedAll, setCopiedAll] = useState(false);
@@ -576,7 +578,10 @@ export function ResultViewer({
 						outputContent ? JSON.parse(outputContent.trim()) : null
 					) as StructuredResult | null;
 					if (candidate && (candidate.image || Array.isArray(candidate.extractedColors))) {
-						previewData = candidate;
+						previewData = {
+							...candidate,
+							image: candidate.image || uploadedImageSrc,
+						};
 					}
 				} catch {
 					// ignore parse errors

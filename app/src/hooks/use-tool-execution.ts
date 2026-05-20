@@ -52,16 +52,14 @@ export function useToolExecution({
 			const controller = new AbortController();
 			abortControllerRef.current = controller;
 
-			const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
 			setIsLoading(true);
 			setError(null);
 			setResult("");
 
 			// Set a timeout of 120 seconds for image processing tools, 30 seconds for others
-			const timeoutMs = toolId === "color-palette" ? 120000 : 30000;
+			const executionTimeoutMs = toolId === "color-palette" ? 120000 : timeoutMs;
 
-			const timeoutId = setTimeout(() => {
+			const executionTimeoutId = setTimeout(() => {
 				timeoutErrorRef.current = true;
 				controller.abort();
 				setError({
@@ -71,9 +69,9 @@ export function useToolExecution({
 					action: "retry",
 				});
 				setIsLoading(false);
-			}, timeoutMs);
+			}, executionTimeoutMs);
 
-			timeoutIdRef.current = timeoutId;
+			timeoutIdRef.current = executionTimeoutId;
 
 			try {
 				const customApiKey = localStorage.getItem("oxloApiKey");
@@ -154,7 +152,7 @@ export function useToolExecution({
 				setError({ message, code: "client_error" });
 				setResult("");
 			} finally {
-				clearTimeout(timeoutId);
+				clearTimeout(executionTimeoutId);
 				setIsLoading(false);
 				abortControllerRef.current = null;
 				if (timeoutIdRef.current) {
