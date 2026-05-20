@@ -1,17 +1,3 @@
-/**
- * Oxtools Auth & Usage Integration
- *
- * Connects to the Oxlo backend to:
- * 1. Validate user sessions (JWT from portal.oxlo.ai)
- * 2. Get user plan (free/pro/premium)
- * 3. Track and enforce usage limits
- *
- * Usage limits per day:
- *   Free:    5 tool executions
- *   Pro:     20 tool executions
- *   Premium: 100 tool executions
- */
-
 // The Oxlo backend URL - same one oxlo-ui uses
 const OXLO_BACKEND_URL = process.env.NEXT_PUBLIC_OXLO_BACKEND_URL || "http://localhost:8000";
 

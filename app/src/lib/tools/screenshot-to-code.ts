@@ -22,6 +22,7 @@ export const screenshotToCode: ToolDefinition = {
 
 	// Tier 2: runs in the unified Python tool runner
 	tier: "tier2",
+	timeoutMs: 600_000,
 
 	// For Tier 2 tools, these are still used for the UI form rendering
 	// but the prompts are handled by the Python service, not Next.js

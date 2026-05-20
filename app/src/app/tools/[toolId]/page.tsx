@@ -1,9 +1,8 @@
 "use client";
-
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
@@ -20,21 +19,22 @@ import type { InputFieldConfig } from "@/types";
  * Contributors only need to create a ToolDefinition file in
  * src/lib/tools/<tool-id>.ts - this page handles the rest.
  */
+
 export default function DynamicToolPage() {
 	const params = useParams<{ toolId: string }>();
 	const tool = getToolById(params.toolId);
-
 	if (!tool || tool.status !== "active") {
 		notFound();
 	}
-
 	return <ToolPageContent toolId={tool.id} />;
 }
 
 function ToolPageContent({ toolId }: { toolId: string }) {
 	const tool = getToolById(toolId)!;
+
 	// Model is hardcoded per tool - no user selection
 	const model = tool.defaultModel || "llama-3.3-70b";
+
 	const [fields, setFields] = useState<Record<string, string>>(() => {
 		const initial: Record<string, string> = {};
 		for (const input of tool.inputs) {
@@ -50,6 +50,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	const { result, isLoading, error, execute, setResult } = useToolExecution({
 		apiEndpoint: `${apiBase}/${tool.id}`,
 		toolId: tool.id,
+		...(tool.timeoutMs && { timeoutMs: tool.timeoutMs }),
 	});
 
 	const setField = useCallback((key: string, value: string) => {
@@ -69,12 +70,31 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 	);
 
 	const { canExecute, getToolUsage, trackExecution, redirectToUpgrade } = useAuth();
-	const toolUsage = getToolUsage(tool.id);
-	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-	// Defer localStorage-dependent rendering to prevent hydration mismatch.
-	// Server always renders the "Run" button; limit state only applies after mount.
+
+	// ── HYDRATION FIX ──────────────────────────────────────────────────────────
+	// getToolUsage reads from localStorage/cookies which don't exist on the server.
+	// We defer the real value until after mount so SSR and client agree on the
+	// initial render (both see the zero/default state), then the effect below
+	// runs on the client and updates to the real value.
 	const [mounted, setMounted] = useState(false);
 	useEffect(() => setMounted(true), []);
+
+	// Always call the hook (Rules of Hooks) — but only use its value post-mount.
+	const rawToolUsage = getToolUsage(tool.id);
+	const toolUsage = mounted
+		? rawToolUsage
+		: {
+				// Issue 8: use optional chaining + safe defaults to prevent SSR TypeError
+				// when getToolUsage returns undefined or an incomplete object before hydration.
+				used: 0,
+				limit: rawToolUsage?.limit ?? 0,
+				remaining: rawToolUsage?.limit ?? 0,
+				limitReached: false,
+				plan: rawToolUsage?.plan ?? "free",
+			};
+	// ── END HYDRATION FIX ──────────────────────────────────────────────────────
+
+	const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
 
 	// Show popup when limit is newly reached
 	useEffect(() => {
@@ -100,6 +120,11 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 
 	// Check if all required fields are filled
 	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
+
+	const uploadedImageSrc = useMemo(() => {
+		const imageKey = tool.inputs.find((i) => i.type === "image")?.key;
+		return imageKey ? fields[imageKey] : undefined;
+	}, [tool.inputs, fields]);
 
 	return (
 		<>
@@ -153,6 +178,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 						{/* Deferred until after mount to prevent hydration mismatch from localStorage */}
 						<div className="flex items-center gap-2">
 							<div
+								suppressHydrationWarning
 								className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
 									!mounted
 										? "bg-primary/10 text-primary"
@@ -164,6 +190,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								}`}
 							>
 								<span
+									suppressHydrationWarning
 									className={`h-1.5 w-1.5 rounded-full ${
 										!mounted
 											? "bg-primary"
@@ -202,7 +229,15 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-						<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						{/* Issue 19: derive the image src from whichever input has type==='image',
+					    instead of hardcoding fields['image']. */}
+						<ResultViewer
+							result={result}
+							isLoading={isLoading}
+							error={error}
+							streaming
+							uploadedImageSrc={uploadedImageSrc}
+						/>
 					</div>
 				</div>
 			</ToolLayout>
@@ -292,7 +327,6 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 // ---------------------------------------------------------------------------
 // Generic input renderer - renders any InputFieldConfig
 // ---------------------------------------------------------------------------
-
 function InputField({
 	config,
 	value,
@@ -315,7 +349,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "textarea":
 			return (
 				<div className="space-y-2">
@@ -329,7 +362,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "select":
 			return (
 				<div className="space-y-2">
@@ -349,7 +381,6 @@ function InputField({
 					</div>
 				</div>
 			);
-
 		case "text":
 			return (
 				<div className="space-y-2">
@@ -363,7 +394,6 @@ function InputField({
 					/>
 				</div>
 			);
-
 		case "image":
 			return (
 				<div className="space-y-2">

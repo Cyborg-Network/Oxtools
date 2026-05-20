@@ -1,24 +1,12 @@
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
-
+import { type NextRequest, NextResponse } from "next/server";
 import { createToolRoute } from "@/lib/create-tool-route";
 import { getToolById } from "@/lib/tools/registry";
-
-// Allow long-running tool executions (up to 5 min locally, 300s on Vercel)
+// Issue 5: maxDuration is set to 300s (5 minutes).
+// We align the AbortController timeout to match this limit exactly,
+// so that requests gracefully abort rather than hanging when Vercel kills the function.
 export const maxDuration = 300;
-// Force dynamic rendering — prevents Next.js from evaluating this route
-// at build time (which would fail without OXLO_API_KEY in CI)
 export const dynamic = "force-dynamic";
 
-/**
- * Dynamic API route for ALL tools.
- *
- * TIER 1: Dispatches to createToolRoute (calls Oxlo LLM API directly).
- * TIER 2: Proxies to the unified Python tool runner on port 9080.
- *
- * The unified runner handles ALL Python tools on ONE port.
- * Route: POST http://localhost:9080/api/tools/{toolId}
- */
 export async function POST(
 	request: NextRequest,
 	{ params }: { params: Promise<{ toolId: string }> }
@@ -33,12 +21,10 @@ export async function POST(
 		);
 	}
 
-	// --- Tier 2: Proxy to unified Python tool runner ---
 	if (tool.tier === "tier2") {
 		return proxyToToolRunner(request, toolId);
 	}
 
-	// --- Tier 1: Handle via LLM prompt (default) ---
 	const handler = createToolRoute({
 		requiredFields: tool.requiredFields,
 		buildSystemPrompt: tool.buildSystemPrompt,
@@ -46,18 +32,9 @@ export async function POST(
 		defaultModel: tool.defaultModel,
 		errorMessage: `Failed to execute ${tool.name}`,
 	});
-
 	return handler(request);
 }
 
-/**
- * Proxy a request to the unified Python tool runner.
- *
- * ALL Tier 2 tools run on ONE service (port 9080) via:
- *   POST http://runner:9080/api/tools/{toolId}
- *
- * No more port-per-tool. One port, one container, unlimited tools.
- */
 async function proxyToToolRunner(request: NextRequest, toolId: string) {
 	const runnerUrl = process.env.TOOL_RUNNER_URL || "http://localhost:9080";
 	const targetUrl = `${runnerUrl}/api/tools/${toolId}`;
@@ -66,12 +43,12 @@ async function proxyToToolRunner(request: NextRequest, toolId: string) {
 		const body = await request.text();
 		const contentType = request.headers.get("content-type") || "application/json";
 
-		// 10 minute timeout — security scans with LLM retries can take 5-10 min
+		// 5 minute timeout — security scans with LLM retries can take 5 min
 		const response = await fetch(targetUrl, {
 			method: "POST",
 			headers: { "Content-Type": contentType },
 			body,
-			signal: AbortSignal.timeout(600_000),
+			signal: AbortSignal.timeout(300_000),
 		});
 
 		if (!response.ok) {
