@@ -9,23 +9,14 @@ export const pdfSummarizer: ToolDefinition = {
 	icon: "FileSearch",
 	status: "active",
 
+	// Tier 2: runs in the unified Python tool runner
+	tier: "tier2",
+
 	requiredFields: ["documentText"],
 	defaultModel: "deepseek-r1-0528",
 
-	buildSystemPrompt: () =>
-		`You are an executive assistant and document analyst. Summarize the provided document text into a structured report:
-
-1. **Executive Summary** - 2-3 sentence overview
-2. **Key Findings** - Bulleted list of the most important points
-3. **Data & Numbers** - Extract all specific numbers, dates, amounts, percentages
-4. **Action Items** - Any tasks, deadlines, or next steps mentioned
-5. **Notable Quotes** - Direct quotes worth highlighting
-6. **Risk Factors** - Any concerns or warnings mentioned
-
-Be concise but comprehensive. Use markdown formatting.`,
-
-	buildUserPrompt: ({ documentText, focus }) =>
-		`${focus ? `**FOCUS AREA:** ${focus}\n\n` : ""}**DOCUMENT TEXT:**\n\`\`\`\n${documentText}\n\`\`\`\n\nSummarize this document.`,
+	buildSystemPrompt: () => "",
+	buildUserPrompt: () => "",
 
 	inputs: [
 		{
