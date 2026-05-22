@@ -1,4 +1,4 @@
-﻿import type { ToolDefinition } from "@/types";
+import type { ToolDefinition } from "@/types";
 
 export const logAnalyzer: ToolDefinition = {
 	id: "log-analyzer",
@@ -8,25 +8,13 @@ export const logAnalyzer: ToolDefinition = {
 	category: "devops",
 	icon: "Terminal",
 	status: "active",
+	tier: "tier2",
 
 	requiredFields: ["logs"],
 	defaultModel: "deepseek-r1-0528",
 
-	buildSystemPrompt: () =>
-		`You are a senior DevOps/SRE engineer analyzing system logs. Provide:
-
-1. **Severity Assessment** - Critical / Warning / Info - how urgent is this?
-2. **Error Summary** - List each unique error type with occurrence count
-3. **Root Cause Analysis** - What is most likely causing these errors?
-4. **Timeline** - When did the issue start? Is it escalating or stable?
-5. **Pattern Detection** - Are errors correlated? Time-based patterns? Cascading failures?
-6. **Recommended Fixes** - Specific, actionable steps to resolve each issue
-7. **Prevention** - Configuration or monitoring changes to prevent recurrence
-
-Format as structured markdown. Use tables for error summaries. Highlight critical items with ⚠️.`,
-
-	buildUserPrompt: ({ logs, context }) =>
-		`${context ? `**CONTEXT:** ${context}\n\n` : ""}**SYSTEM LOGS:**\n\`\`\`\n${logs}\n\`\`\`\n\nAnalyze these logs and identify issues.`,
+	buildSystemPrompt: () => "",   // unused — tool.py / llm_client.py own the prompt
+	buildUserPrompt: () => "",     // unused — tool.py builds the payload
 
 	inputs: [
 		{
@@ -45,6 +33,21 @@ Format as structured markdown. Use tables for error summaries. Highlight critica
 			type: "textarea",
 			placeholder: "E.g. 'This started after deploying v2.3.1 to production at 10:30 AM'",
 			rows: 2,
+		},
+		{
+			key: "report_mode",
+			label: "Report Mode",
+			type: "select",
+			options: [
+				{
+					value: "fix_only",
+					label: "Fix Only — just tell me what to do right now",
+				},
+				{
+					value: "detailed",
+					label: "Full Report — root causes, timeline, patterns + fixes",
+				},
+			],
 		},
 	],
 };

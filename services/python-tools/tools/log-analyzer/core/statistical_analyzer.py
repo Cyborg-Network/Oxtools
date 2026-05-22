@@ -65,7 +65,7 @@ class AnalysisResult:
 # ---------------------------------------------------------------------------
 
 class StatisticalAnalyzer:
-    
+
     def __init__(
         self,
         burst_threshold_multiplier: float = 3.0,
@@ -101,7 +101,6 @@ class StatisticalAnalyzer:
                 bk = _bucket_key(entry.timestamp, self._bucket_minutes)
                 timeline[bk][entry.level.value] += 1
 
-                # Escalation detection
                 if prev_level and self._is_escalation(prev_level, entry.level):
                     escalation_events.append(EscalationEvent(
                         timestamp=entry.timestamp.isoformat(),
