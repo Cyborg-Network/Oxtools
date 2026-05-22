@@ -13,8 +13,8 @@ export const logAnalyzer: ToolDefinition = {
 	requiredFields: ["logs"],
 	defaultModel: "deepseek-r1-0528",
 
-	buildSystemPrompt: () => "", // unused — tool.py / llm_client.py own the prompt
-	buildUserPrompt: () => "", // unused — tool.py builds the payload
+	buildSystemPrompt: () => "",   // unused — tool.py / llm_client.py own the prompt
+	buildUserPrompt: () => "",     // unused — tool.py builds the payload
 
 	inputs: [
 		{
