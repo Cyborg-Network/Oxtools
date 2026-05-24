@@ -3,7 +3,7 @@
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
@@ -293,6 +293,350 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 // Generic input renderer - renders any InputFieldConfig
 // ---------------------------------------------------------------------------
 
+function PdfDropField({
+	config,
+	value,
+	onChange,
+}: {
+	config: InputFieldConfig;
+	value: string;
+	onChange: (value: string) => void;
+}) {
+	const dropRef = useRef<HTMLButtonElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const [dropState, setDropState] = useState<
+		"idle" | "hover" | "loading" | "loading-ocr" | "done" | "error"
+	>("idle");
+	const [fileName, setFileName] = useState<string>("");
+	const [extractError, setExtractError] = useState<string>("");
+
+	const maxBytes = (config.maxSizeMb || 20) * 1024 * 1024;
+
+	const extractText = useCallback(
+		async (file: File): Promise<string> => {
+			if (file.size > maxBytes) {
+				throw new Error(`File exceeds ${config.maxSizeMb || 20} MB limit.`);
+			}
+
+			if (file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") {
+				const pdfjsWindow = window as unknown as Record<string, unknown>;
+				if (!pdfjsWindow.pdfjsLib) {
+					await new Promise<void>((resolve, reject) => {
+						const script = document.createElement("script");
+						script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+						script.onload = () => resolve();
+						script.onerror = () =>
+							reject(new Error("Failed to load pdf.js. Check your internet connection."));
+						document.head.appendChild(script);
+					});
+					(
+						pdfjsWindow.pdfjsLib as {
+							GlobalWorkerOptions: { workerSrc: string };
+						}
+					).GlobalWorkerOptions.workerSrc =
+						"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+				}
+
+				type PdfPage = {
+					getTextContent: () => Promise<{
+						items: { str: string; hasEOL?: boolean }[];
+					}>;
+					getViewport: (options: { scale: number }) => { width: number; height: number };
+					render: (params: {
+						canvasContext: CanvasRenderingContext2D;
+						viewport: { width: number; height: number };
+					}) => { promise: Promise<void> };
+				};
+
+				const pdfjs = pdfjsWindow.pdfjsLib as {
+					getDocument: (src: { data: ArrayBuffer }) => {
+						promise: Promise<{
+							numPages: number;
+							getPage: (n: number) => Promise<PdfPage>;
+						}>;
+					};
+				};
+
+				const arrayBuffer = await file.arrayBuffer();
+				const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+				const pages: string[] = [];
+
+				for (let i = 1; i <= pdf.numPages; i++) {
+					const page = await pdf.getPage(i);
+					const content = await page.getTextContent();
+					const pageText = content.items
+						.map((item) => item.str + (item.hasEOL ? "\n" : ""))
+						.join("");
+					pages.push(pageText.trim());
+				}
+
+				const nativeText = pages.join("\n\n").trim();
+				if (nativeText.length > 30) {
+					return nativeText;
+				}
+
+				setDropState("loading-ocr");
+
+				const tesseractWindow = window as unknown as Record<string, unknown>;
+				if (!tesseractWindow.Tesseract) {
+					await new Promise<void>((resolve, reject) => {
+						const script = document.createElement("script");
+						script.src =
+							"https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js";
+						script.onload = () => resolve();
+						script.onerror = () => reject(new Error("Failed to load Tesseract.js for OCR."));
+						document.head.appendChild(script);
+					});
+				}
+
+				const Tesseract = tesseractWindow.Tesseract as {
+					createWorker: (lang: string) => Promise<{
+						recognize: (image: Blob) => Promise<{ data: { text: string } }>;
+						terminate: () => Promise<void>;
+					}>;
+				};
+
+				const worker = await Tesseract.createWorker("eng");
+				const ocrPages: string[] = [];
+
+				try {
+					for (let i = 1; i <= pdf.numPages; i++) {
+						const page = await pdf.getPage(i);
+						const viewport = page.getViewport({ scale: 2 });
+						const canvas = document.createElement("canvas");
+						canvas.width = Math.floor(viewport.width);
+						canvas.height = Math.floor(viewport.height);
+						const context = canvas.getContext("2d");
+						if (!context) {
+							throw new Error("Could not render PDF page for OCR.");
+						}
+
+						await page.render({ canvasContext: context, viewport }).promise;
+						const blob = await new Promise<Blob>((resolve, reject) => {
+							canvas.toBlob((result) => {
+								if (result) resolve(result);
+								else reject(new Error("Could not convert PDF page to image for OCR."));
+							}, "image/png");
+						});
+						const { data } = await worker.recognize(blob);
+						ocrPages.push(data.text.trim());
+					}
+				} finally {
+					await worker.terminate();
+				}
+
+				return ocrPages.join("\n\n").trim();
+			}
+
+			return new Promise<string>((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = () => resolve(reader.result as string);
+				reader.onerror = () => reject(new Error("Could not read file."));
+				reader.readAsText(file, "utf-8");
+			});
+		},
+		[config.maxSizeMb, maxBytes]
+	);
+
+	const processFile = useCallback(
+		async (file: File) => {
+			setDropState("loading");
+			setFileName(file.name);
+			setExtractError("");
+			try {
+				const text = await extractText(file);
+				if (!text.trim()) throw new Error("No readable text found in this file.");
+				onChange(text);
+				setDropState("done");
+			} catch (err) {
+				setExtractError(err instanceof Error ? err.message : "Unknown error.");
+				setDropState("error");
+			}
+		},
+		[extractText, onChange]
+	);
+
+	const handleDragOver = useCallback((e: React.DragEvent) => {
+		e.preventDefault();
+		setDropState("hover");
+	}, []);
+
+	const handleDragLeave = useCallback(() => {
+		setDropState(value ? "done" : "idle");
+	}, [value]);
+
+	const handleDrop = useCallback(
+		(e: React.DragEvent) => {
+			e.preventDefault();
+			const file = e.dataTransfer.files?.[0];
+			if (file) processFile(file);
+		},
+		[processFile]
+	);
+
+	const handleFileInput = useCallback(
+		(e: React.ChangeEvent<HTMLInputElement>) => {
+			const file = e.target.files?.[0];
+			if (file) processFile(file);
+			e.target.value = "";
+		},
+		[processFile]
+	);
+
+	const handleClear = useCallback(() => {
+		onChange("");
+		setFileName("");
+		setDropState("idle");
+		setExtractError("");
+	}, [onChange]);
+
+	const dropZoneBorder =
+		dropState === "hover"
+			? "border-primary bg-primary/5"
+			: dropState === "error"
+				? "border-destructive bg-destructive/5"
+				: dropState === "done"
+					? "border-primary/50 bg-primary/[0.03]"
+					: "border-input hover:border-primary/40 hover:bg-muted/30";
+
+	return (
+		<div className="space-y-2">
+			<Label>{config.label}</Label>
+
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept={config.accept || ".pdf,.txt,.md"}
+				className="hidden"
+				onChange={handleFileInput}
+			/>
+			<button
+				type="button"
+				ref={dropRef}
+				onDragOver={handleDragOver}
+				onDragLeave={handleDragLeave}
+				onDrop={handleDrop}
+				onClick={() => fileInputRef.current?.click()}
+				className={`relative flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors ${dropZoneBorder}`}
+			>
+				{dropState === "loading" && (
+					<>
+						<div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+						<p className="text-sm text-muted-foreground">Extracting text from {fileName}...</p>
+					</>
+				)}
+
+				{dropState === "loading-ocr" && (
+					<>
+						<div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+						<p className="text-sm text-muted-foreground">
+							No text found - running OCR on {fileName}...
+						</p>
+						<p className="text-xs text-muted-foreground">This may take 10-30 seconds</p>
+					</>
+				)}
+
+				{dropState === "done" && (
+					<>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							aria-hidden="true"
+							className="h-6 w-6 text-primary"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							strokeWidth={2}
+						>
+							<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+						</svg>
+						<p className="text-sm font-medium text-primary">{fileName}</p>
+						<p className="text-xs text-muted-foreground">
+							{value.length.toLocaleString()} chars extracted · Click to replace
+						</p>
+					</>
+				)}
+
+				{dropState === "error" && (
+					<>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							aria-hidden="true"
+							className="h-6 w-6 text-destructive"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							strokeWidth={2}
+						>
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+							/>
+						</svg>
+						<p className="text-sm text-destructive">{extractError}</p>
+						<p className="text-xs text-muted-foreground">Click to try another file</p>
+					</>
+				)}
+
+				{(dropState === "idle" || dropState === "hover") && (
+					<>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							aria-hidden="true"
+							className={`h-8 w-8 transition-colors ${
+								dropState === "hover" ? "text-primary" : "text-muted-foreground"
+							}`}
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							strokeWidth={1.5}
+						>
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+							/>
+						</svg>
+						<p className="text-sm font-medium">
+							{dropState === "hover"
+								? "Release to upload"
+								: "Drag your document here or click to browse"}
+						</p>
+					</>
+				)}
+			</button>
+
+			{value && dropState !== "loading" && dropState !== "loading-ocr" && (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleClear();
+					}}
+					className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+				>
+					Clear and start over
+				</button>
+			)}
+
+			<div className="space-y-1">
+				<p className="text-xs text-muted-foreground">Or paste / type text directly:</p>
+				<Textarea
+					value={value}
+					onChange={(e) => {
+						onChange(e.target.value);
+						if (e.target.value && dropState === "idle") setDropState("done");
+						if (!e.target.value) setDropState("idle");
+					}}
+					placeholder={config.placeholder}
+					rows={config.rows || 14}
+					className="resize-none font-mono text-xs"
+				/>
+			</div>
+		</div>
+	);
+}
+
 function InputField({
 	config,
 	value,
@@ -529,6 +873,9 @@ function InputField({
 					</div>
 				</div>
 			);
+
+		case "pdf-drop":
+			return <PdfDropField config={config} value={value} onChange={onChange} />;
 
 		default:
 			return null;

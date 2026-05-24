@@ -28,6 +28,7 @@ async def _summarize_one(chunk: str, index: int, focus: Optional[str] = None) ->
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.2,
+        max_tokens=600,
     )
 
     return response.choices[0].message.content.strip()

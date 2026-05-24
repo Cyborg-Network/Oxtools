@@ -4,7 +4,7 @@ export const pdfSummarizer: ToolDefinition = {
 	id: "pdf-summarizer",
 	name: "PDF / Document Summarizer",
 	description:
-		"Paste document text and get a structured executive summary with key findings, action items, and highlights.",
+		"Drag a PDF document.",
 	category: "documentation",
 	icon: "FileSearch",
 	status: "active",
@@ -21,10 +21,12 @@ export const pdfSummarizer: ToolDefinition = {
 	inputs: [
 		{
 			key: "documentText",
-			label: "Document Text",
-			type: "code",
-			placeholder: "Paste the text content of your document here...",
+			label: "Document",
+			type: "pdf-drop",
+			placeholder: "Paste text here...",
 			rows: 14,
+			accept: ".pdf,.txt,.md",
+			maxSizeMb: 20,
 		},
 		{
 			key: "focus",
