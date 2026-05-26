@@ -4,7 +4,7 @@ export const pdfSummarizer: ToolDefinition = {
 	id: "pdf-summarizer",
 	name: "PDF / Document Summarizer",
 	description:
-		"Drag a PDF document.",
+		"Upload any document — PDF, Word, Excel, CSV, or image — and get a structured executive summary with key findings, action items, and extracted data.",
 	category: "documentation",
 	icon: "FileSearch",
 	status: "active",
@@ -23,10 +23,11 @@ export const pdfSummarizer: ToolDefinition = {
 			key: "documentText",
 			label: "Document",
 			type: "pdf-drop",
-			placeholder: "Paste text here...",
+			placeholder: "Drag a file here, or paste text directly...",
 			rows: 14,
-			accept: ".pdf,.txt,.md",
-			maxSizeMb: 20,
+			accept: ".pdf,.txt,.md,.csv,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,.gif",
+			maxSizeMb: 25,
+			helperText: "PDF · Word · Excel · CSV · Images (JPG, PNG) · TXT · MD — Max 25 MB",
 		},
 		{
 			key: "focus",

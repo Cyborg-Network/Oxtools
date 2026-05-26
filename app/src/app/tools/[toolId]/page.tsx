@@ -305,7 +305,15 @@ function PdfDropField({
 	const dropRef = useRef<HTMLButtonElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [dropState, setDropState] = useState<
-		"idle" | "hover" | "loading" | "loading-ocr" | "done" | "error"
+		| "idle"
+		| "hover"
+		| "loading"
+		| "loading-ocr"
+		| "loading-excel"
+		| "loading-word"
+		| "loading-image-ocr"
+		| "done"
+		| "error"
 	>("idle");
 	const [fileName, setFileName] = useState<string>("");
 	const [extractError, setExtractError] = useState<string>("");
@@ -315,45 +323,72 @@ function PdfDropField({
 	const extractText = useCallback(
 		async (file: File): Promise<string> => {
 			if (file.size > maxBytes) {
-				throw new Error(`File exceeds ${config.maxSizeMb || 20} MB limit.`);
+				throw new Error(`File exceeds ${config.maxSizeMb || 25} MB limit.`);
 			}
 
-			if (file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") {
-				const pdfjsWindow = window as unknown as Record<string, unknown>;
-				if (!pdfjsWindow.pdfjsLib) {
+			const name = file.name.toLowerCase();
+			const win = window as unknown as Record<string, unknown>;
+
+			// ── HELPER: lazy-load a CDN script (idempotent) ──────────────────
+			async function loadScript(url: string, globalKey: string, label: string) {
+				if (!win[globalKey]) {
 					await new Promise<void>((resolve, reject) => {
-						const script = document.createElement("script");
-						script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-						script.onload = () => resolve();
-						script.onerror = () =>
-							reject(new Error("Failed to load pdf.js. Check your internet connection."));
-						document.head.appendChild(script);
+						const s = document.createElement("script");
+						s.src = url;
+						s.onload = () => resolve();
+						s.onerror = () =>
+							reject(new Error(`Failed to load ${label}. Check your internet connection.`));
+						document.head.appendChild(s);
 					});
-					(
-						pdfjsWindow.pdfjsLib as {
-							GlobalWorkerOptions: { workerSrc: string };
-						}
-					).GlobalWorkerOptions.workerSrc =
-						"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 				}
+			}
+
+			// ── HELPER: OCR for an ImageBitmap or Blob with Tesseract.js ──────────────
+			async function runOcrOnBlob(blob: Blob): Promise<string> {
+				await loadScript(
+					"https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js",
+					"Tesseract",
+					"Tesseract.js"
+				);
+				type TWorker = {
+					recognize: (img: Blob) => Promise<{ data: { text: string } }>;
+					terminate: () => Promise<void>;
+				};
+				type TTesseract = { createWorker: (lang: string) => Promise<TWorker> };
+				const Tesseract = win["Tesseract"] as TTesseract;
+				const worker = await Tesseract.createWorker("eng");
+				try {
+					const { data } = await worker.recognize(blob);
+					return data.text.trim();
+				} finally {
+					await worker.terminate();
+				}
+			}
+
+			// ════════════════════════════════════════════════════════════════════════
+			// PDF  (.pdf)
+			// ════════════════════════════════════════════════════════════════════════
+			if (name.endsWith(".pdf") || file.type === "application/pdf") {
+				// 1. Load pdf.js if missing
+				await loadScript(
+					"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+					"pdfjsLib",
+					"pdf.js"
+				);
+				(win["pdfjsLib"] as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc =
+					"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 				type PdfPage = {
-					getTextContent: () => Promise<{
-						items: { str: string; hasEOL?: boolean }[];
-					}>;
-					getViewport: (options: { scale: number }) => { width: number; height: number };
-					render: (params: {
+					getTextContent: () => Promise<{ items: { str: string; hasEOL?: boolean }[] }>;
+					getViewport: (o: { scale: number }) => { width: number; height: number };
+					render: (p: {
 						canvasContext: CanvasRenderingContext2D;
 						viewport: { width: number; height: number };
 					}) => { promise: Promise<void> };
 				};
-
-				const pdfjs = pdfjsWindow.pdfjsLib as {
+				const pdfjs = win["pdfjsLib"] as {
 					getDocument: (src: { data: ArrayBuffer }) => {
-						promise: Promise<{
-							numPages: number;
-							getPage: (n: number) => Promise<PdfPage>;
-						}>;
+						promise: Promise<{ numPages: number; getPage: (n: number) => Promise<PdfPage> }>;
 					};
 				};
 
@@ -361,6 +396,7 @@ function PdfDropField({
 				const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
 				const pages: string[] = [];
 
+				// 2. Native text extraction
 				for (let i = 1; i <= pdf.numPages; i++) {
 					const page = await pdf.getPage(i);
 					const content = await page.getTextContent();
@@ -371,69 +407,140 @@ function PdfDropField({
 				}
 
 				const nativeText = pages.join("\n\n").trim();
-				if (nativeText.length > 30) {
-					return nativeText;
-				}
+				if (nativeText.length > 30) return nativeText;
 
+				// 3. OCR fallback — scanned PDF (images, handwritten text, forms)
 				setDropState("loading-ocr");
-
-				const tesseractWindow = window as unknown as Record<string, unknown>;
-				if (!tesseractWindow.Tesseract) {
-					await new Promise<void>((resolve, reject) => {
-						const script = document.createElement("script");
-						script.src =
-							"https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js";
-						script.onload = () => resolve();
-						script.onerror = () => reject(new Error("Failed to load Tesseract.js for OCR."));
-						document.head.appendChild(script);
-					});
-				}
-
-				const Tesseract = tesseractWindow.Tesseract as {
-					createWorker: (lang: string) => Promise<{
-						recognize: (image: Blob) => Promise<{ data: { text: string } }>;
-						terminate: () => Promise<void>;
-					}>;
-				};
-
-				const worker = await Tesseract.createWorker("eng");
 				const ocrPages: string[] = [];
 
-				try {
-					for (let i = 1; i <= pdf.numPages; i++) {
-						const page = await pdf.getPage(i);
-						const viewport = page.getViewport({ scale: 2 });
-						const canvas = document.createElement("canvas");
-						canvas.width = Math.floor(viewport.width);
-						canvas.height = Math.floor(viewport.height);
-						const context = canvas.getContext("2d");
-						if (!context) {
-							throw new Error("Could not render PDF page for OCR.");
-						}
+				for (let i = 1; i <= pdf.numPages; i++) {
+					const page = await pdf.getPage(i);
+					// scale: 2.5 — balance speed and accuracy for handwritten text
+					const viewport = page.getViewport({ scale: 2.5 });
+					const canvas = document.createElement("canvas");
+					canvas.width = Math.floor(viewport.width);
+					canvas.height = Math.floor(viewport.height);
+					const ctx = canvas.getContext("2d");
+					if (!ctx) throw new Error("Could not render PDF page for OCR.");
+					await page.render({ canvasContext: ctx, viewport }).promise;
 
-						await page.render({ canvasContext: context, viewport }).promise;
-						const blob = await new Promise<Blob>((resolve, reject) => {
-							canvas.toBlob((result) => {
-								if (result) resolve(result);
-								else reject(new Error("Could not convert PDF page to image for OCR."));
-							}, "image/png");
-						});
-						const { data } = await worker.recognize(blob);
-						ocrPages.push(data.text.trim());
-					}
-				} finally {
-					await worker.terminate();
+					const blob = await new Promise<Blob>((res, rej) =>
+						canvas.toBlob(
+							(b) => (b ? res(b) : rej(new Error("Could not render PDF page to image."))),
+							"image/png"
+						)
+					);
+					ocrPages.push(await runOcrOnBlob(blob));
 				}
 
-				return ocrPages.join("\n\n").trim();
+				const ocrText = ocrPages.join("\n\n").trim();
+				if (!ocrText)
+					throw new Error("OCR did not find readable text. The PDF may be blank or fully graphical.");
+				return ocrText;
 			}
 
-			return new Promise<string>((resolve, reject) => {
-				const reader = new FileReader();
-				reader.onload = () => resolve(reader.result as string);
-				reader.onerror = () => reject(new Error("Could not read file."));
-				reader.readAsText(file, "utf-8");
-			});
+			// ════════════════════════════════════════════════════════════════════════
+			// DIRECT IMAGES (.jpg, .jpeg, .png, .webp, .gif)
+			// Use case: photo of a document, whiteboard, scanned receipt
+			// ════════════════════════════════════════════════════════════════════════
+			if (
+				name.endsWith(".jpg") ||
+				name.endsWith(".jpeg") ||
+				name.endsWith(".png") ||
+				name.endsWith(".webp") ||
+				name.endsWith(".gif") ||
+				file.type.startsWith("image/")
+			) {
+				setDropState("loading-image-ocr");
+				const text = await runOcrOnBlob(file);
+				if (!text)
+					throw new Error(
+						"No readable text found in this image. Make sure the text is clear and not too small."
+					);
+				return text;
+			}
+
+			// ════════════════════════════════════════════════════════════════════════
+			// EXCEL (.xlsx, .xls)
+			// Convert to tabular text: headers + rows separated by tabs
+			// ════════════════════════════════════════════════════════════════════════
+			if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+				setDropState("loading-excel");
+				await loadScript(
+					"https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+					"XLSX",
+					"SheetJS"
+				);
+				type XLSXLib = {
+					read: (data: ArrayBuffer, opts: { type: string }) => {
+						SheetNames: string[];
+						Sheets: Record<string, unknown>;
+					};
+					utils: {
+						sheet_to_csv: (sheet: unknown) => string;
+					};
+				};
+				const XLSX = win["XLSX"] as XLSXLib;
+				const arrayBuffer = await file.arrayBuffer();
+				const workbook = XLSX.read(arrayBuffer, { type: "array" });
+				const sections: string[] = [];
+
+				for (const sheetName of workbook.SheetNames) {
+					const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+					const nonEmpty = csv
+						.split("\n")
+						.filter((l) => l.replace(/,/g, "").trim())
+						.join("\n");
+					if (nonEmpty.trim()) {
+						sections.push(`### Sheet: ${sheetName}\n${nonEmpty}`);
+					}
+				}
+
+				if (!sections.length) throw new Error("The Excel file appears to be empty.");
+				return sections.join("\n\n");
+			}
+
+			// ════════════════════════════════════════════════════════════════════════
+			// WORD (.docx)
+			// Extract text while preserving paragraph structure
+			// ════════════════════════════════════════════════════════════════════════
+			if (name.endsWith(".docx")) {
+				setDropState("loading-word");
+				await loadScript(
+					"https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js",
+					"mammoth",
+					"Mammoth.js"
+				);
+				type MammothLib = {
+					extractRawText: (opts: { arrayBuffer: ArrayBuffer }) => Promise<{ value: string }>;
+				};
+				const mammoth = win["mammoth"] as MammothLib;
+				const arrayBuffer = await file.arrayBuffer();
+				const result = await mammoth.extractRawText({ arrayBuffer });
+				const text = result.value.trim();
+				if (!text) throw new Error("The Word document appears to be empty or contains only images.");
+				return text;
+			}
+
+			// ════════════════════════════════════════════════════════════════════════
+			// CSV (.csv) — browser-native, no library needed
+			// ════════════════════════════════════════════════════════════════════════
+			if (name.endsWith(".csv")) {
+				const text = await file.text();
+				if (!text.trim()) throw new Error("The CSV file is empty.");
+				// Count columns from the first row to give the model context
+				const lines = text.split("\n").filter((l) => l.trim());
+				const headerCols = lines[0]?.split(",").length ?? 0;
+				const preview = `CSV Document — ${lines.length - 1} rows × ${headerCols} columns\n\n${text}`;
+				return preview;
+			}
+
+			// ════════════════════════════════════════════════════════════════════════
+			// PLAIN TEXT (.txt, .md, and any other)
+			// ════════════════════════════════════════════════════════════════════════
+			const text = await file.text();
+			if (!text.trim()) throw new Error("The file appears to be empty.");
+			return text;
 		},
 		[config.maxSizeMb, maxBytes]
 	);
@@ -490,6 +597,13 @@ function PdfDropField({
 		setExtractError("");
 	}, [onChange]);
 
+	const isLoading =
+		dropState === "loading" ||
+		dropState === "loading-ocr" ||
+		dropState === "loading-excel" ||
+		dropState === "loading-word" ||
+		dropState === "loading-image-ocr";
+
 	const dropZoneBorder =
 		dropState === "hover"
 			? "border-primary bg-primary/5"
@@ -497,7 +611,9 @@ function PdfDropField({
 				? "border-destructive bg-destructive/5"
 				: dropState === "done"
 					? "border-primary/50 bg-primary/[0.03]"
-					: "border-input hover:border-primary/40 hover:bg-muted/30";
+					: isLoading
+						? "border-primary/30 bg-muted/20"
+						: "border-input hover:border-primary/40 hover:bg-muted/30";
 
 	return (
 		<div className="space-y-2">
@@ -506,7 +622,7 @@ function PdfDropField({
 			<input
 				ref={fileInputRef}
 				type="file"
-				accept={config.accept || ".pdf,.txt,.md"}
+				accept={config.accept || ".pdf,.txt,.md,.csv,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,.gif"}
 				className="hidden"
 				onChange={handleFileInput}
 			/>
@@ -533,6 +649,30 @@ function PdfDropField({
 							No text found - running OCR on {fileName}...
 						</p>
 						<p className="text-xs text-muted-foreground">This may take 10-30 seconds</p>
+					</>
+				)}
+
+				{dropState === "loading-excel" && (
+					<>
+						<div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+						<p className="text-sm text-muted-foreground">Reading spreadsheet from {fileName}…</p>
+						<p className="text-xs text-muted-foreground">Converting sheets to text</p>
+					</>
+				)}
+
+				{dropState === "loading-word" && (
+					<>
+						<div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+						<p className="text-sm text-muted-foreground">Extracting text from {fileName}…</p>
+						<p className="text-xs text-muted-foreground">Processing Word document</p>
+					</>
+				)}
+
+				{dropState === "loading-image-ocr" && (
+					<>
+						<div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+						<p className="text-sm text-muted-foreground">Running OCR on {fileName}…</p>
+						<p className="text-xs text-muted-foreground">This may take 15–40 seconds</p>
 					</>
 				)}
 
@@ -602,11 +742,14 @@ function PdfDropField({
 								? "Release to upload"
 								: "Drag your document here or click to browse"}
 						</p>
+						<p className="text-xs text-muted-foreground">
+							{config.helperText || "PDF · Word · Excel · CSV · Images · TXT — Max 25 MB"}
+						</p>
 					</>
 				)}
 			</button>
 
-			{value && dropState !== "loading" && dropState !== "loading-ocr" && (
+			{value && !isLoading && (
 				<button
 					type="button"
 					onClick={(e) => {
