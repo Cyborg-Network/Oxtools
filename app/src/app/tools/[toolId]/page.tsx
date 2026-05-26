@@ -317,6 +317,7 @@ function PdfDropField({
 	>("idle");
 	const [fileName, setFileName] = useState<string>("");
 	const [extractError, setExtractError] = useState<string>("");
+	const [source, setSource] = useState<"file" | "manual">("manual");
 
 	const maxBytes = (config.maxSizeMb || 20) * 1024 * 1024;
 
@@ -554,6 +555,7 @@ function PdfDropField({
 				const text = await extractText(file);
 				if (!text.trim()) throw new Error("No readable text found in this file.");
 				onChange(text);
+				setSource("file"); // Track that this value came from a file
 				setDropState("done");
 			} catch (err) {
 				setExtractError(err instanceof Error ? err.message : "Unknown error.");
@@ -595,6 +597,7 @@ function PdfDropField({
 		setFileName("");
 		setDropState("idle");
 		setExtractError("");
+		setSource("manual"); // Reset to manual mode when cleared
 	}, [onChange]);
 
 	const isLoading =
@@ -762,20 +765,23 @@ function PdfDropField({
 				</button>
 			)}
 
-			<div className="space-y-1">
-				<p className="text-xs text-muted-foreground">Or paste / type text directly:</p>
-				<Textarea
-					value={value}
-					onChange={(e) => {
-						onChange(e.target.value);
-						if (e.target.value && dropState === "idle") setDropState("done");
-						if (!e.target.value) setDropState("idle");
-					}}
-					placeholder={config.placeholder}
-					rows={config.rows || 14}
-					className="resize-none font-mono text-xs"
-				/>
-			</div>
+			{/* Only show the paste textarea when the user is typing, not when a file was loaded */}
+			{source === "manual" && (
+				<div className="space-y-1">
+					<p className="text-xs text-muted-foreground">Or paste / type text directly:</p>
+					<Textarea
+						value={value}
+						onChange={(e) => {
+							onChange(e.target.value);
+							if (e.target.value && dropState === "idle") setDropState("done");
+							if (!e.target.value) setDropState("idle");
+						}}
+						placeholder={config.placeholder}
+						rows={config.rows || 14}
+						className="resize-none font-mono text-xs"
+					/>
+				</div>
+			)}
 		</div>
 	);
 }

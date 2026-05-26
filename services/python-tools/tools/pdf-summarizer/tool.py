@@ -59,7 +59,7 @@ async def run(data: dict):
 
         yield "[synthesis] Building final report...\n"
         final_output = await synthesize(chunk_summaries, entities, structure)
-        yield "\n---RESULT---\n"
+        yield "\n---REPORT_START---\n"
         yield final_output
 
     return stream()

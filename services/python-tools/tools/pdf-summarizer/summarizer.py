@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 from typing import Optional
 
 from openai import AsyncOpenAI
@@ -31,7 +32,9 @@ async def _summarize_one(chunk: str, index: int, focus: Optional[str] = None) ->
         max_tokens=600,
     )
 
-    return response.choices[0].message.content.strip()
+    raw = response.choices[0].message.content or ""
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE).strip()
+    return cleaned
 
 
 async def summarize_chunks(chunks: list, focus: str = "") -> list:

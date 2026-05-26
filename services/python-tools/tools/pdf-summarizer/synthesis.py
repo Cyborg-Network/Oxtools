@@ -1,4 +1,5 @@
 import os
+import re
 
 from openai import AsyncOpenAI
 
@@ -33,6 +34,8 @@ Rules:
 - Never hallucinate figures. Use only data from the provided summaries and entities.
 - Preserve exact numbers, dates, and amounts.
 - Be concise and professional.
+- Start your response DIRECTLY with "## Executive Summary" — no preamble, no intro sentence.
+- Do NOT include any reasoning, chain-of-thought, or <think> blocks. Output only the final report.
 """
 
 
@@ -107,4 +110,6 @@ async def synthesize(chunk_summaries: list, entities: list, structure: dict) -> 
         temperature=0.2,
     )
 
-    return response.choices[0].message.content.strip()
+    raw = response.choices[0].message.content or ""
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE).strip()
+    return cleaned
