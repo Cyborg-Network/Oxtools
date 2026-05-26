@@ -2,6 +2,7 @@
 
 import { Button, Label, Textarea } from "@ansospace/ui";
 import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
+import Image from "next/image";
 import { notFound, useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
@@ -135,6 +136,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								<p className="text-xs text-muted-foreground">
 									Upgrade your plan for more daily executions.{" "}
 									<button
+										type="button"
 										onClick={redirectToUpgrade}
 										className="text-primary hover:underline underline-offset-2"
 									>
@@ -191,6 +193,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 								⚡ {toolUsage.remaining} use{toolUsage.remaining === 1 ? "" : "s"} remaining for
 								this tool today.{" "}
 								<button
+									type="button"
 									onClick={redirectToUpgrade}
 									className="underline underline-offset-2 hover:text-amber-400"
 								>
@@ -213,6 +216,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					<div className="relative mx-4 w-full max-w-md rounded-2xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
 						{/* Close button */}
 						<button
+							type="button"
 							onClick={() => setShowUpgradeDialog(false)}
 							className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 						>
@@ -356,7 +360,7 @@ function PdfDropField({
 					terminate: () => Promise<void>;
 				};
 				type TTesseract = { createWorker: (lang: string) => Promise<TWorker> };
-				const Tesseract = win["Tesseract"] as TTesseract;
+				const Tesseract = win.Tesseract as TTesseract;
 				const worker = await Tesseract.createWorker("eng");
 				try {
 					const { data } = await worker.recognize(blob);
@@ -376,7 +380,9 @@ function PdfDropField({
 					"pdfjsLib",
 					"pdf.js"
 				);
-				(win["pdfjsLib"] as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc =
+				(
+					win.pdfjsLib as { GlobalWorkerOptions: { workerSrc: string } }
+				).GlobalWorkerOptions.workerSrc =
 					"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 				type PdfPage = {
@@ -387,7 +393,7 @@ function PdfDropField({
 						viewport: { width: number; height: number };
 					}) => { promise: Promise<void> };
 				};
-				const pdfjs = win["pdfjsLib"] as {
+				const pdfjs = win.pdfjsLib as {
 					getDocument: (src: { data: ArrayBuffer }) => {
 						promise: Promise<{ numPages: number; getPage: (n: number) => Promise<PdfPage> }>;
 					};
@@ -436,7 +442,9 @@ function PdfDropField({
 
 				const ocrText = ocrPages.join("\n\n").trim();
 				if (!ocrText)
-					throw new Error("OCR did not find readable text. The PDF may be blank or fully graphical.");
+					throw new Error(
+						"OCR did not find readable text. The PDF may be blank or fully graphical."
+					);
 				return ocrText;
 			}
 
@@ -473,7 +481,10 @@ function PdfDropField({
 					"SheetJS"
 				);
 				type XLSXLib = {
-					read: (data: ArrayBuffer, opts: { type: string }) => {
+					read: (
+						data: ArrayBuffer,
+						opts: { type: string }
+					) => {
 						SheetNames: string[];
 						Sheets: Record<string, unknown>;
 					};
@@ -481,7 +492,7 @@ function PdfDropField({
 						sheet_to_csv: (sheet: unknown) => string;
 					};
 				};
-				const XLSX = win["XLSX"] as XLSXLib;
+				const XLSX = win.XLSX as XLSXLib;
 				const arrayBuffer = await file.arrayBuffer();
 				const workbook = XLSX.read(arrayBuffer, { type: "array" });
 				const sections: string[] = [];
@@ -515,11 +526,12 @@ function PdfDropField({
 				type MammothLib = {
 					extractRawText: (opts: { arrayBuffer: ArrayBuffer }) => Promise<{ value: string }>;
 				};
-				const mammoth = win["mammoth"] as MammothLib;
+				const mammoth = win.mammoth as MammothLib;
 				const arrayBuffer = await file.arrayBuffer();
 				const result = await mammoth.extractRawText({ arrayBuffer });
 				const text = result.value.trim();
-				if (!text) throw new Error("The Word document appears to be empty or contains only images.");
+				if (!text)
+					throw new Error("The Word document appears to be empty or contains only images.");
 				return text;
 			}
 
@@ -878,7 +890,7 @@ function InputField({
 						/>
 						{value && (
 							<div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border">
-								<img src={value} alt="Preview" className="h-full w-full object-cover" />
+								<Image src={value} alt="Preview" fill unoptimized className="object-cover" />
 							</div>
 						)}
 					</div>
@@ -972,7 +984,7 @@ function InputField({
 											)
 										);
 										const valid = Array.from(files).filter((f) => {
-											const ext = "." + f.name.split(".").pop()?.toLowerCase();
+											const ext = `.${f.name.split(".").pop()?.toLowerCase()}`;
 											const p = f.webkitRelativePath || f.name;
 											if (
 												p.includes("__pycache__") ||
