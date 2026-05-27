@@ -50,7 +50,8 @@ async def run(data: dict):
 
         yield "[entities] Extracting entities...\n"
         clean_text = "\n\n".join(chunks)
-        entities = extract_entities(clean_text)
+        import asyncio
+        entities = await asyncio.to_thread(extract_entities, clean_text)
         yield f"[entities] Extracted {len(entities)} entities\n"
 
         yield "[summarize] Summarizing sections...\n"

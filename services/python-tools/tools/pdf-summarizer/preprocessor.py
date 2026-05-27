@@ -150,7 +150,7 @@ def _chunk(text: str) -> list:
                         if current and len(current) + len(piece) + 2 > CHUNK_MAX_CHARS:
                             flush()
                         if current:
-                            current += "\n\n" + piece
+                            current += " " + piece
                         else:
                             current = piece
                 else:

@@ -323,12 +323,13 @@ function PdfDropField({
 	const [extractError, setExtractError] = useState<string>("");
 	const [source, setSource] = useState<"file" | "manual">("manual");
 
-	const maxBytes = (config.maxSizeMb || 20) * 1024 * 1024;
+	const maxMb = config.maxSizeMb ?? 20;
+	const maxBytes = maxMb * 1024 * 1024;
 
 	const extractText = useCallback(
 		async (file: File): Promise<string> => {
 			if (file.size > maxBytes) {
-				throw new Error(`File exceeds ${config.maxSizeMb || 25} MB limit.`);
+				throw new Error(`File exceeds ${maxMb} MB limit.`);
 			}
 
 			const name = file.name.toLowerCase();
@@ -419,10 +420,11 @@ function PdfDropField({
 				// 3. OCR fallback — scanned PDF (images, handwritten text, forms)
 				setDropState("loading-ocr");
 				const ocrPages: string[] = [];
+				const MAX_OCR_PAGES = 20;
+				const pagesToProcess = Math.min(pdf.numPages, MAX_OCR_PAGES);
 
-				for (let i = 1; i <= pdf.numPages; i++) {
+				for (let i = 1; i <= pagesToProcess; i++) {
 					const page = await pdf.getPage(i);
-					// scale: 2.5 — balance speed and accuracy for handwritten text
 					const viewport = page.getViewport({ scale: 2.5 });
 					const canvas = document.createElement("canvas");
 					canvas.width = Math.floor(viewport.width);
@@ -438,6 +440,14 @@ function PdfDropField({
 						)
 					);
 					ocrPages.push(await runOcrOnBlob(blob));
+
+					// Release canvas memory after each page
+					canvas.width = 0;
+					canvas.height = 0;
+				}
+
+				if (pdf.numPages > MAX_OCR_PAGES) {
+					ocrPages.push(`\n\n[Note: OCR was limited to the first ${MAX_OCR_PAGES} pages out of ${pdf.numPages} total.]`);
 				}
 
 				const ocrText = ocrPages.join("\n\n").trim();
@@ -583,8 +593,8 @@ function PdfDropField({
 	}, []);
 
 	const handleDragLeave = useCallback(() => {
-		setDropState(value ? "done" : "idle");
-	}, [value]);
+		setDropState(source === "file" ? "done" : "idle");
+	}, [source]);
 
 	const handleDrop = useCallback(
 		(e: React.DragEvent) => {
@@ -784,6 +794,7 @@ function PdfDropField({
 					<Textarea
 						value={value}
 						onChange={(e) => {
+							setSource("manual");
 							onChange(e.target.value);
 							if (e.target.value && dropState === "idle") setDropState("done");
 							if (!e.target.value) setDropState("idle");
