@@ -378,41 +378,41 @@ export function ResultViewer({
 						</button>
 						{(isLoading && !isReportStarted) || logsExpanded ? (
 							<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
-							{pipelineLogs.split("\n").map((line, i) => {
-								if (!line.trim() || line === ".") return null;
-								let textColor = "text-zinc-400";
-								if (line.startsWith("[")) {
-									textColor = "text-primary font-semibold";
-								} else if (line.startsWith(">")) {
-									textColor = "text-zinc-300 ml-4 border-l-2 border-primary/30 pl-2";
-								} else if (
-									line.toLowerCase().includes("error") ||
-									line.toLowerCase().includes("failed")
-								) {
-									textColor = "text-red-400";
-								}
-								return (
-									<div key={i} className={`py-0.5 ${textColor}`}>
-										{line}
+								{pipelineLogs.split("\n").map((line, i) => {
+									if (!line.trim() || line === ".") return null;
+									let textColor = "text-zinc-400";
+									if (line.startsWith("[")) {
+										textColor = "text-primary font-semibold";
+									} else if (line.startsWith(">")) {
+										textColor = "text-zinc-300 ml-4 border-l-2 border-primary/30 pl-2";
+									} else if (
+										line.toLowerCase().includes("error") ||
+										line.toLowerCase().includes("failed")
+									) {
+										textColor = "text-red-400";
+									}
+									return (
+										<div key={`log-${i}-${line.slice(0, 20)}`} className={`py-0.5 ${textColor}`}>
+											{line}
+										</div>
+									);
+								})}
+								{isLoading && !isReportStarted && (
+									<div className="mt-2 flex items-center gap-1.5 text-primary/70">
+										<span
+											className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+											style={{ animationDelay: "0ms" }}
+										/>
+										<span
+											className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+											style={{ animationDelay: "150ms" }}
+										/>
+										<span
+											className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+											style={{ animationDelay: "300ms" }}
+										/>
 									</div>
-								);
-							})}
-							{isLoading && !isReportStarted && (
-								<div className="mt-2 flex items-center gap-1.5 text-primary/70">
-									<span
-										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
-										style={{ animationDelay: "0ms" }}
-									/>
-									<span
-										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
-										style={{ animationDelay: "150ms" }}
-									/>
-									<span
-										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
-										style={{ animationDelay: "300ms" }}
-									/>
-								</div>
-							)}
+								)}
 							</div>
 						) : null}
 					</CardContent>
