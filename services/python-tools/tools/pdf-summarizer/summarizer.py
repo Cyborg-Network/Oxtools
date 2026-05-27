@@ -13,8 +13,9 @@ client = AsyncOpenAI(api_key=OXLO_API_KEY, base_url=OXLO_BASE_URL)
 
 SYSTEM_PROMPT = (
     "You are a precise document analyst. Summarize the provided section "
-    "with clear, factual points. Include key numbers, dates, and action items "
-    "mentioned in the text. Focus on facts; do not add interpretation."
+    "with clear, factual points. Include key numbers, dates, amounts, percentages, "
+    "action items, and notable direct quotes mentioned in the text. "
+    "Focus on facts; do not add interpretation."
 )
 
 
