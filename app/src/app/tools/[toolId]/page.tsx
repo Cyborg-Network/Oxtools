@@ -447,7 +447,9 @@ function PdfDropField({
 				}
 
 				if (pdf.numPages > MAX_OCR_PAGES) {
-					ocrPages.push(`\n\n[Note: OCR was limited to the first ${MAX_OCR_PAGES} pages out of ${pdf.numPages} total.]`);
+					ocrPages.push(
+						`\n\n[Note: OCR was limited to the first ${MAX_OCR_PAGES} pages out of ${pdf.numPages} total.]`
+					);
 				}
 
 				const ocrText = ocrPages.join("\n\n").trim();
@@ -565,7 +567,7 @@ function PdfDropField({
 			if (!text.trim()) throw new Error("The file appears to be empty.");
 			return text;
 		},
-		[config.maxSizeMb, maxBytes]
+		[maxMb, maxBytes]
 	);
 
 	const processFile = useCallback(

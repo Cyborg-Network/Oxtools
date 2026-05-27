@@ -378,7 +378,7 @@ export function ResultViewer({
 						</button>
 						{(isLoading && !isReportStarted) || logsExpanded ? (
 							<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
-								{pipelineLogs.split("\n").map((line, i) => {
+								{pipelineLogs.split("\n").map((line) => {
 									if (!line.trim() || line === ".") return null;
 									let textColor = "text-zinc-400";
 									if (line.startsWith("[")) {
@@ -392,7 +392,10 @@ export function ResultViewer({
 										textColor = "text-red-400";
 									}
 									return (
-										<div key={`log-${i}-${line.slice(0, 20)}`} className={`py-0.5 ${textColor}`}>
+										<div
+											key={line ? `log-${line.slice(0, 20)}` : "empty-log"}
+											className={`py-0.5 ${textColor}`}
+										>
 											{line}
 										</div>
 									);
