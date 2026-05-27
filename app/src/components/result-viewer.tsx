@@ -60,6 +60,7 @@ function MermaidViewer({ chart }: { chart: string }) {
 		<div
 			ref={containerRef}
 			className="mermaid-wrapper my-6 flex items-center justify-center overflow-auto rounded-lg border border-border bg-zinc-950 dark:bg-zinc-900 p-6"
+			// biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid renders SVG markup.
 			dangerouslySetInnerHTML={{ __html: svg }}
 		/>
 	);
@@ -73,6 +74,12 @@ interface ResultViewerProps {
 	error?: ToolError | string | null;
 	streaming?: boolean;
 	onOpenSettings?: () => void;
+}
+
+function stripThinkBlocks(text: string) {
+	// Hide model reasoning / chain-of-thought style blocks from UI.
+	// Common in DeepSeek and some OSS models.
+	return text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "").replace(/<\/?think\b[^>]*>/gi, "");
 }
 
 const ERROR_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -272,8 +279,8 @@ export function ResultViewer({
 		);
 	}
 
-	let parsedJson: { code?: string; [key: string]: any } | null = null;
-	let displayMarkdown = result;
+	let parsedJson: { code?: string; [key: string]: unknown } | null = null;
+	let displayMarkdown = stripThinkBlocks(result || "");
 	let pipelineLogs = "";
 	let isReportStarted = false;
 
@@ -417,6 +424,7 @@ export function ResultViewer({
 					{hasHtmlCode && (
 						<div className="flex border-b border-border/50 px-4 pt-3 bg-muted/20">
 							<button
+								type="button"
 								onClick={() => setActiveTab("preview")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "preview"
@@ -427,6 +435,7 @@ export function ResultViewer({
 								Preview
 							</button>
 							<button
+								type="button"
 								onClick={() => setActiveTab("code")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "code"
