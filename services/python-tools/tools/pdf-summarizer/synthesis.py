@@ -10,6 +10,15 @@ FALLBACK_MODEL = "kimi-k2.6"
 
 client = AsyncOpenAI(api_key=OXLO_API_KEY, base_url=OXLO_BASE_URL)
 
+REQUIRED_HEADERS = (
+    "## Executive Summary",
+    "## Key Findings",
+    "## Data & Numbers",
+    "## Action Items",
+    "## Notable Quotes",
+    "## Risk Factors",
+)
+
 SYSTEM_PROMPT = """\
 You are an executive assistant and expert document analyst. Summarize the provided document into a structured report.
 Given section summaries and extracted data points, output the following sections IN THIS EXACT ORDER using markdown headers:
@@ -38,6 +47,7 @@ Rules:
 - Be concise but comprehensive. Use markdown formatting.
 - Start your response DIRECTLY with "## Executive Summary" - no preamble, no intro sentence.
 - Do NOT include any reasoning, chain-of-thought, or <think> blocks. Output only the final report.
+- Think briefly. Your <think> block must not exceed 300 words. Go directly to the report.
 """
 
 
@@ -85,6 +95,42 @@ def _pick_model(summaries_text: str, entity_block: str) -> str:
     return SYNTHESIS_MODEL
 
 
+def _strip_think(raw: str) -> str:
+    """
+    Remove model reasoning blocks from the final response.
+    Handles both well-formed and malformed <think> content.
+    """
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE).strip()
+
+    if "<think>" in cleaned.lower():
+        match = re.search(r"(^|\n)(##\s)", cleaned)
+        if match:
+            cleaned = cleaned[match.start():].strip()
+        else:
+            cleaned = re.sub(r"<think>[\s\S]*", "", cleaned, flags=re.IGNORECASE).strip()
+
+    return cleaned
+
+
+def _section_score(text: str) -> int:
+    return sum(1 for header in REQUIRED_HEADERS if header in text)
+
+
+async def _create_completion(model: str, user_content: str) -> str:
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0.2,
+        max_tokens=8192,
+    )
+
+    raw = response.choices[0].message.content or ""
+    return _strip_think(raw)
+
+
 async def synthesize(chunk_summaries: list, entities: list, structure: dict) -> str:
     summaries_text = "\n\n".join(
         f"### Section {index + 1}\n{summary}"
@@ -103,15 +149,13 @@ async def synthesize(chunk_summaries: list, entities: list, structure: dict) -> 
     )
 
     model = _pick_model(summaries_text, entity_block)
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ],
-        temperature=0.2,
-    )
+    report = await _create_completion(model, user_content)
+    if _section_score(report) < len(REQUIRED_HEADERS):
+        fallback_report = await _create_completion(FALLBACK_MODEL, user_content)
+        if _section_score(fallback_report) > _section_score(report) or (
+            _section_score(fallback_report) == _section_score(report)
+            and len(fallback_report) > len(report)
+        ):
+            report = fallback_report
 
-    raw = response.choices[0].message.content or ""
-    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE).strip()
-    return cleaned
+    return report

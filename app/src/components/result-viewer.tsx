@@ -77,9 +77,20 @@ interface ResultViewerProps {
 }
 
 function stripThinkBlocks(text: string) {
-	// Hide model reasoning / chain-of-thought style blocks from UI.
-	// Common in DeepSeek and some OSS models.
-	return text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "").replace(/<\/?think\b[^>]*>/gi, "");
+	// Remove well-formed <think> blocks first.
+	let out = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+
+	// If an unclosed <think> remains, trim from the first real report heading.
+	if (/<think/i.test(out)) {
+		const headingIdx = out.search(/\n##\s/);
+		if (headingIdx !== -1) {
+			out = out.slice(headingIdx).trim();
+		} else {
+			out = out.replace(/<think[\s\S]*/i, "").trim();
+		}
+	}
+
+	return out;
 }
 
 const ERROR_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -223,6 +234,13 @@ export function ResultViewer({
 }: ResultViewerProps) {
 	const [copiedAll, setCopiedAll] = useState(false);
 	const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+	const [logsExpanded, setLogsExpanded] = useState(false);
+
+	useEffect(() => {
+		if (result.includes("---REPORT_START---") && !isLoading) {
+			setLogsExpanded(false);
+		}
+	}, [isLoading, result]);
 
 	const handleCopyAll = useCallback(async () => {
 		await navigator.clipboard.writeText(result);
@@ -280,7 +298,7 @@ export function ResultViewer({
 	}
 
 	let parsedJson: { code?: string; [key: string]: unknown } | null = null;
-	let displayMarkdown = stripThinkBlocks(result || "");
+	let displayMarkdown = "";
 	let pipelineLogs = "";
 	let isReportStarted = false;
 
@@ -288,12 +306,14 @@ export function ResultViewer({
 		if (result.includes("---REPORT_START---")) {
 			const parts = result.split("---REPORT_START---");
 			pipelineLogs = parts[0].trim();
-			displayMarkdown = parts[1] || "";
+			displayMarkdown = stripThinkBlocks(parts[1] || "");
 			isReportStarted = true;
 		} else if (streaming && isLoading) {
 			// If we haven't hit the report marker yet, everything is logs.
 			pipelineLogs = result.trim();
 			displayMarkdown = "";
+		} else {
+			displayMarkdown = stripThinkBlocks(result || "");
 		}
 	}
 
@@ -334,7 +354,11 @@ export function ResultViewer({
 			{pipelineLogs && (
 				<Card className="border-primary/20 bg-primary/[0.02] overflow-hidden">
 					<CardContent className="p-0">
-						<div className="flex items-center gap-3 border-b border-border/40 bg-muted/30 px-4 py-3">
+						<button
+							type="button"
+							onClick={() => setLogsExpanded((value) => !value)}
+							className="flex w-full items-center gap-3 border-b border-border/40 bg-muted/30 px-4 py-3 text-left"
+						>
 							<div className="relative">
 								{isLoading && !isReportStarted ? (
 									<Spinner className="h-4 w-4 text-primary" />
@@ -345,11 +369,15 @@ export function ResultViewer({
 									<Sparkles className="absolute -top-1 -right-1 h-2 w-2 animate-pulse text-primary" />
 								)}
 							</div>
-							<span className="text-sm font-medium text-muted-foreground">
+							<span className="flex-1 text-sm font-medium text-muted-foreground">
 								{isLoading && !isReportStarted ? "Agent Pipeline Running..." : "Pipeline Complete"}
 							</span>
-						</div>
-						<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
+							<span className="text-xs text-muted-foreground">
+								{isLoading && !isReportStarted ? "▼ visible" : logsExpanded ? "▲ hide" : "▼ show"}
+							</span>
+						</button>
+						{(isLoading && !isReportStarted) || logsExpanded ? (
+							<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
 							{pipelineLogs.split("\n").map((line, i) => {
 								if (!line.trim() || line === ".") return null;
 								let textColor = "text-zinc-400";
@@ -385,7 +413,8 @@ export function ResultViewer({
 									/>
 								</div>
 							)}
-						</div>
+							</div>
+						) : null}
 					</CardContent>
 				</Card>
 			)}
