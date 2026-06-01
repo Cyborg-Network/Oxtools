@@ -305,40 +305,51 @@ function InputField({
 	switch (config.type) {
 		case "code":
 			return (
-				<div className="space-y-2">
-					<Label>{config.label}</Label>
-					<CodeEditor
-						value={value}
-						onChange={onChange}
-						placeholder={config.placeholder}
-						rows={config.rows || 8}
-					/>
+				<div className="space-y-3 rounded-xl border border-border/50 bg-card p-4 shadow-sm">
+					<div>
+						<Label className="text-base font-semibold">{config.label}</Label>
+						{config.helperText && <p className="text-sm text-muted-foreground mt-1">{config.helperText}</p>}
+					</div>
+					<div className="overflow-hidden rounded-lg border border-input/50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+						<CodeEditor
+							value={value}
+							onChange={onChange}
+							placeholder={config.placeholder}
+							rows={config.rows || 8}
+						/>
+					</div>
 				</div>
 			);
 
 		case "textarea":
 			return (
-				<div className="space-y-2">
-					<Label>{config.label}</Label>
+				<div className="space-y-3">
+					<div>
+						<Label className="text-base font-semibold">{config.label}</Label>
+						{config.helperText && <p className="text-sm text-muted-foreground mt-1">{config.helperText}</p>}
+					</div>
 					<Textarea
 						value={value}
 						onChange={(e) => onChange(e.target.value)}
 						placeholder={config.placeholder}
 						rows={config.rows || 4}
-						className="resize-none"
+						className="resize-none rounded-xl border-input/60 shadow-sm focus-visible:ring-primary/20"
 					/>
 				</div>
 			);
 
 		case "select":
 			return (
-				<div className="space-y-2">
-					<Label>{config.label}</Label>
-					<div className="max-w-xs">
+				<div className="space-y-3">
+					<div>
+						<Label className="text-base font-semibold">{config.label}</Label>
+						{config.helperText && <p className="text-sm text-muted-foreground mt-1">{config.helperText}</p>}
+					</div>
+					<div className="relative max-w-sm">
 						<select
 							value={value}
 							onChange={(e) => onChange(e.target.value)}
-							className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							className="flex h-11 w-full appearance-none rounded-xl border border-input/60 bg-background pl-4 pr-10 text-sm shadow-sm transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{config.options?.map((opt) => (
 								<option key={opt.value} value={opt.value}>
@@ -346,29 +357,40 @@ function InputField({
 								</option>
 							))}
 						</select>
+						<div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+							<svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+							</svg>
+						</div>
 					</div>
 				</div>
 			);
 
 		case "text":
 			return (
-				<div className="space-y-2">
-					<Label>{config.label}</Label>
+				<div className="space-y-3">
+					<div>
+						<Label className="text-base font-semibold">{config.label}</Label>
+						{config.helperText && <p className="text-sm text-muted-foreground mt-1">{config.helperText}</p>}
+					</div>
 					<input
 						type="text"
 						value={value}
 						onChange={(e) => onChange(e.target.value)}
 						placeholder={config.placeholder}
-						className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						className="flex h-11 w-full rounded-xl border border-input/60 bg-background px-4 py-2 text-sm shadow-sm transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
 					/>
 				</div>
 			);
 
 		case "image":
 			return (
-				<div className="space-y-2">
-					<Label>{config.label}</Label>
-					<div className="flex items-center gap-4 p-1">
+				<div className="space-y-3">
+					<div>
+						<Label className="text-base font-semibold">{config.label}</Label>
+						{config.helperText && <p className="text-sm text-muted-foreground mt-1">{config.helperText}</p>}
+					</div>
+					<div className="flex items-center gap-4 p-4 rounded-xl border border-dashed border-input/60 bg-muted/10 hover:bg-muted/30 transition-colors">
 						<input
 							type="file"
 							accept="image/*"
@@ -381,11 +403,11 @@ function InputField({
 								};
 								reader.readAsDataURL(file);
 							}}
-							className="flex h-10 w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium hover:file:cursor-pointer hover:file:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							className="flex h-10 w-full max-w-sm rounded-md border-0 bg-transparent px-0 py-2 text-sm text-muted-foreground file:mr-4 file:rounded-full file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary hover:file:bg-primary/20 hover:cursor-pointer focus-visible:outline-none"
 						/>
 						{value && (
-							<div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border">
-								<img src={value} alt="Preview" className="h-full w-full object-cover" />
+							<div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border shadow-sm">
+								<img src={value} alt="Preview" className="h-full w-full object-cover hover:scale-110 transition-transform" />
 							</div>
 						)}
 					</div>
@@ -394,17 +416,21 @@ function InputField({
 
 		case "files":
 			return (
-				<div className="space-y-2">
-					<Label>{config.label}</Label>
-					<div className="space-y-3">
-						<input
-							type="file"
-							accept={
-								config.accept ||
-								".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.zip,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env"
-							}
-							multiple
-							onChange={async (e) => {
+				<div className="space-y-3">
+					<div>
+						<Label className="text-base font-semibold">{config.label}</Label>
+						{config.helperText && <p className="text-sm text-muted-foreground mt-1">{config.helperText}</p>}
+					</div>
+					<div className="space-y-4 rounded-xl border border-dashed border-border/60 bg-muted/5 p-6 hover:bg-muted/20 transition-colors">
+						<div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+							<input
+								type="file"
+								accept={
+									config.accept ||
+									".py,.js,.ts,.go,.java,.c,.cpp,.rb,.php,.rs,.zip,.txt,.json,.yml,.yaml,.toml,.cfg,.ini,.env"
+								}
+								multiple
+								onChange={async (e) => {
 								const files = e.target.files;
 								if (!files || files.length === 0) return;
 
@@ -456,12 +482,12 @@ function InputField({
 								}
 								onChange(parts.join("\n\n"));
 							}}
-							className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium hover:file:cursor-pointer hover:file:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							className="flex h-10 w-full max-w-sm rounded-md border-0 bg-transparent px-0 py-2 text-sm text-muted-foreground file:mr-4 file:rounded-full file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary hover:file:bg-primary/20 hover:cursor-pointer focus-visible:outline-none"
 						/>
 						{/* Folder picker for directory uploads */}
-						<div className="flex items-center gap-2">
-							<span className="text-xs text-muted-foreground">or</span>
-							<label className="cursor-pointer rounded-md border border-dashed border-input/60 bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors">
+						<div className="flex items-center gap-3">
+							<span className="text-sm text-muted-foreground/80 font-medium italic">or</span>
+							<label className="cursor-pointer rounded-full border border-dashed border-input/60 bg-background hover:bg-muted/40 px-5 py-2 text-sm font-medium text-foreground transition-colors shadow-sm">
 								📁 Select Folder
 								<input
 									type="file"
@@ -514,17 +540,22 @@ function InputField({
 								/>
 							</label>
 						</div>
+						</div>
 						{value && (
-							<div className="rounded-md border border-input/50 bg-muted/30 p-3">
-								<p className="text-xs text-muted-foreground">
-									{value.startsWith("__ZIP__:")
-										? "📦 ZIP archive loaded — will be extracted server-side"
-										: `📄 ${(value.match(/--- FILE:/g) || []).length} file(s) loaded`}
-								</p>
+							<div className="rounded-xl border border-primary/20 bg-primary/5 p-4 shadow-inner mt-4 animate-in fade-in duration-300">
+								<div className="flex items-center gap-3">
+									<div className="rounded-full bg-primary/20 p-2">
+										<svg className="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+										</svg>
+									</div>
+									<p className="text-sm font-medium text-foreground">
+										{value.startsWith("__ZIP__:")
+											? "ZIP archive loaded & ready for processing"
+											: `${(value.match(/--- FILE:/g) || []).length} file(s) loaded`}
+									</p>
+								</div>
 							</div>
-						)}
-						{config.helperText && (
-							<p className="text-xs text-muted-foreground">{config.helperText}</p>
 						)}
 					</div>
 				</div>

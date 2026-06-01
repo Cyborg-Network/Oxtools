@@ -72,6 +72,8 @@ def _is_read_only(sql: str, dialect: str) -> tuple[bool, str | None]:
 
     for expr in expressions:
         root = expr.key.upper() if getattr(expr, "key", None) else ""
+        if root == "SEMICOLON":
+            continue
         if root not in {"SELECT", "WITH", "UNION"}:
             return False, "Sandbox only allows SELECT/WITH style queries."
 
