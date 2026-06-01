@@ -14,6 +14,7 @@ from intent_classifier import classify_intent
 from schema_parser import parse_schema
 from sql_generator import GENERATOR_MODEL_COMPLEX, GENERATOR_MODEL_DEFAULT, generate_sql
 from sql_refiner import refine_sql
+from sql_sandbox import run_sandbox, sandbox_markdown
 from sql_validator import validate_sql
 
 MANIFEST = {
@@ -28,6 +29,8 @@ MANIFEST = {
 async def run(data: dict):
     query = (data.get("query") or "").strip()
     dialect = (data.get("dialect") or "postgresql").strip()
+    mode = (data.get("mode") or "generate").strip()
+    sandbox_query = (data.get("sandboxQuery") or "").strip()
 
     schema_ddl = (data.get("schema") or "").strip()
     schema_file_raw = (data.get("schemaFile") or "").strip()
@@ -42,6 +45,38 @@ async def run(data: dict):
             schema_ddl = "\n".join(lines[1:]).strip()
         else:
             schema_ddl = schema_file_raw
+
+    if mode == "sandbox":
+        try:
+            schema_info = parse_schema(schema_ddl)
+        except Exception:
+            schema_info = {"tables": {}, "table_names": [], "raw_ddl": ""}
+        return {
+            "result": run_sandbox(
+                data.get("sql") or query,
+                dialect,
+                schema_info,
+                int(data.get("rowsPerTable") or 8),
+            )
+        }
+
+    if sandbox_query:
+        async def sandbox_stream():
+            yield "[1/2] Building mock sandbox database from schema...\n"
+            try:
+                schema_info = parse_schema(schema_ddl)
+            except Exception as exc:
+                yield f"[ERROR] Schema parser failed: {exc}\n"
+                return
+
+            yield "[2/2] Running read-only SQL against mock data...\n"
+            payload = run_sandbox(sandbox_query, dialect, schema_info)
+
+            yield "\n---RESULT---\n"
+            yield "# SQL Sandbox Result\n"
+            yield sandbox_markdown(payload)
+
+        return sandbox_stream()
 
     async def stream():
         if not query:
@@ -130,7 +165,14 @@ async def run(data: dict):
             for w in final_validation["warnings"]:
                 yield f"  [WARN] {w}\n"
 
+        sandbox_payload = run_sandbox(
+            final_validation.get("sql") or "",
+            dialect,
+            schema_info,
+        )
+
         yield "\n---RESULT---\n"
         yield final_response
+        yield sandbox_markdown(sandbox_payload)
 
     return stream()

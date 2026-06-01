@@ -16,8 +16,8 @@ export const sqlConverter: ToolDefinition = {
 	requiredFields: ["query"],
 	defaultModel: "qwen-3-coder-30b",
 	buildSystemPrompt: () => "",
-	buildUserPrompt: ({ query, dialect, schema, schemaFile }) =>
-		JSON.stringify({ query, dialect, schema, schemaFile }),
+	buildUserPrompt: ({ query, dialect, schema, schemaFile, sandboxQuery }) =>
+		JSON.stringify({ query, dialect, schema, schemaFile, sandboxQuery }),
 
 	inputs: [
 		{
@@ -58,6 +58,16 @@ export const sqlConverter: ToolDefinition = {
 				"CREATE TABLE users (\n  id SERIAL PRIMARY KEY,\n  email VARCHAR(255),\n  created_at TIMESTAMP\n);",
 			rows: 6,
 			helperText: "Ignored when a file is uploaded above.",
+		},
+		{
+			key: "sandboxQuery",
+			label: "Sandbox test query (optional)",
+			type: "code",
+			placeholder:
+				"Paste the generated SELECT query here to test it against mock data created from your schema.",
+			rows: 8,
+			helperText:
+				"If filled, the tool skips AI generation and runs this query safely against generated mock data.",
 		},
 	],
 };
