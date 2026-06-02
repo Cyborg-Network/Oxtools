@@ -58,11 +58,11 @@ async def run(data: dict):
         else:
             schema_ddl = schema_file_raw
 
-    # ── Sandbox-only mode ─────────────────────────────────────────────────
+    # Sandbox-only mode
     if mode == "sandbox" or sandbox_sql:
         return _sandbox_stream(sandbox_sql or query, dialect, schema_ddl)
 
-    # ── Full generation pipeline ──────────────────────────────────────────
+    # Full generation pipeline
     return _generate_stream(query, dialect, schema_ddl)
 
 
@@ -190,8 +190,15 @@ async def _generate_stream(query: str, dialect: str, schema_ddl: str):
             from synthetic_data import _deterministic_fallback
             mock_data = _deterministic_fallback(schema_info, rows_per_table=8)
 
+        # Prefer the validated/cleaned SQL; fall back to the raw generator
+        # response so sandbox_manager's _extract_sql can parse the fenced block
+        sql_for_sandbox = (
+            final_validation.get("sql")
+            or final_response
+            or ""
+        )
         sandbox_result = run_sandbox(
-            final_validation.get("sql") or "",
+            sql_for_sandbox,
             dialect,
             schema_info,
             mock_data,

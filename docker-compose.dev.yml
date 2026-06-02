@@ -20,9 +20,15 @@ services:
       - OXLO_API_KEY=${OXLO_API_KEY}
       - OXLO_BASE_URL=https://api.oxlo.ai/v1
       - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - SANDBOX_HOST=host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Mount tools dir for live reload during development
       - ./services/python-tools/tools:/app/tools
+      # Required for SQL sandbox containers
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
   # Legacy standalone services (will be migrated to unified runner)

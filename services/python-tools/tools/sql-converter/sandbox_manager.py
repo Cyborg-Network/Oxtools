@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import secrets
 import sqlite3
@@ -45,6 +46,14 @@ _NANO_CPU_LIMIT = 1_000_000_000   # 1 vCPU
 _CONNECT_TIMEOUT = 60   # seconds to wait for container to be ready
 _QUERY_TIMEOUT   = 30   # seconds for single query execution
 _MAX_ROWS        = 100  # cap result set
+
+_SQLGLOT_DIALECT_MAP = {
+    "postgresql": "postgres",
+    "mysql": "mysql",
+    "mssql": "tsql",
+    "bigquery": "bigquery",
+    "sqlite": "sqlite",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +114,75 @@ def _extract_sql(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# DDL helpers
+# ---------------------------------------------------------------------------
+
+def _strip_database_statements(ddl: str) -> str:
+    """
+    Remove CREATE DATABASE, DROP DATABASE, and USE statements from DDL.
+    These conflict with the sandbox's own database management.
+    """
+    lines = []
+    for line in ddl.splitlines():
+        stripped = line.strip().upper()
+        if (
+            stripped.startswith("CREATE DATABASE")
+            or stripped.startswith("DROP DATABASE")
+            or stripped.startswith("USE ")
+            or stripped.startswith("CREATE SCHEMA")
+            or stripped.startswith("DROP SCHEMA")
+        ):
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _quote_id(name: str, dialect: str) -> str:
+    """Return a properly quoted identifier for the given dialect."""
+    safe = re.sub(r"[^a-zA-Z0-9_]", "", name or "")
+    if dialect == "mysql":
+        return f"`{safe}`"
+    elif dialect == "mssql":
+        return f"[{safe}]"
+    else:  # postgresql, sqlite, bigquery
+        return f'"{safe}"'
+
+
+def _normalize_ddl_case(ddl: str, dialect: str) -> str:
+    """
+    Re-generate DDL with lowercase table/column names using sqlglot,
+    so that names match the schema_info dict (which uses .lower()).
+    Falls back to original DDL on parse error.
+    """
+    try:
+        import sqlglot
+        from sqlglot import exp
+
+        dialect_key = _SQLGLOT_DIALECT_MAP.get(dialect, "postgres")
+        statements = sqlglot.parse(ddl, read=dialect_key)
+        normalized = []
+        for stmt in statements:
+            if stmt is None:
+                continue
+            # Lowercase all Table and Column name nodes
+            for node in stmt.walk():
+                if isinstance(node, exp.Table) and node.name:
+                    node.set("this", exp.to_identifier(node.name.lower()))
+                elif isinstance(node, exp.Column) and node.name:
+                    node.set("this", exp.to_identifier(node.name.lower()))
+            normalized.append(stmt.sql(dialect=dialect_key))
+        return ";\n".join(normalized)
+    except Exception:
+        return ddl
+
+
+def _resolve_table_name(tname: str, schema_info: dict) -> str:
+    tables = schema_info.get("tables") or {}
+    lookup = {k.lower(): k for k in tables}
+    return lookup.get((tname or "").lower(), tname)
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -137,7 +215,7 @@ def run_sandbox(
         return _fail(dialect, "No SQL provided to sandbox.")
 
     if dialect == "sqlite":
-        return _run_sqlite(sql, schema_info, mock_data, rows_per_table)
+        return _run_sqlite(sql, schema_info, mock_data, rows_per_table, source_dialect=dialect)
 
     # Attempt Docker-based sandbox; fall back to SQLite if Docker is unavailable
     docker_available = True
@@ -161,7 +239,7 @@ def run_sandbox(
         f"(query auto-translated from {dialect.upper()} via sqlglot).",
         f"Docker error: {docker_error}",
     ]
-    result = _run_sqlite(sql, schema_info, mock_data, rows_per_table)
+    result = _run_sqlite(sql, schema_info, mock_data, rows_per_table, source_dialect=dialect)
     result.dialect = dialect  # Report the original dialect
     result.warnings = warnings + result.warnings
     return result
@@ -283,13 +361,15 @@ def _run_sqlite(
     schema_info: dict,
     mock_data: dict[str, list[dict[str, Any]]],
     rows_per_table: int,
+    source_dialect: str = "postgresql",
 ) -> SandboxResult:
     warnings: list[str] = []
 
-    # Translate to SQLite if needed
+    # Translate to SQLite using the actual source dialect
+    read_dialect = _SQLGLOT_DIALECT_MAP.get(source_dialect.lower(), "postgres")
     try:
         import sqlglot
-        translated_list = sqlglot.transpile(sql, read="postgres", write="sqlite")
+        translated_list = sqlglot.transpile(sql, read=read_dialect, write="sqlite")
         sqlite_sql = ";\n".join(translated_list) if translated_list else sql
         if sqlite_sql != sql:
             warnings.append("Query was auto-translated from the source dialect to SQLite.")
@@ -317,7 +397,10 @@ def _run_sqlite(
     except Exception as exc:
         return _fail("sqlite", str(exc), warnings)
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +418,24 @@ def _docker_client():
             "Make sure the runner container has /var/run/docker.sock mounted and "
             "'docker>=7.0.0' is in requirements.txt."
         ) from exc
+
+
+def _in_docker() -> bool:
+    return os.path.exists("/.dockerenv")
+
+
+def _sandbox_host() -> str:
+    override = os.getenv("SANDBOX_HOST")
+    if override:
+        return override
+    if _in_docker():
+        try:
+            import socket
+            socket.gethostbyname("host.docker.internal")
+            return "host.docker.internal"
+        except Exception:
+            return "172.17.0.1"
+    return "127.0.0.1"
 
 
 @contextmanager
@@ -445,40 +546,55 @@ def _run_postgresql(
 
     with _ephemeral_container("postgres:16-alpine", env, ports, "postgresql") as ctr:
         port = _get_host_port(ctr, "5432/tcp")
-        _wait_for_port("127.0.0.1", port)
+        host = _sandbox_host()
+        _wait_for_port(host, port)
 
         import psycopg2
         # Extra wait: postgres takes a moment after TCP accepts
-        conn = _pg_connect_with_retry(db_user, db_pass, db_name, port)
+        conn = _pg_connect_with_retry(db_user, db_pass, db_name, port, host)
         try:
             warnings: list[str] = []
             mock_preview: dict[str, list[dict[str, Any]]] = {}
 
-            with conn:
-                with conn.cursor() as cur:
-                    # Create tables from DDL
-                    ddl = (schema_info.get("raw_ddl") or "").strip()
-                    if ddl:
-                        cur.execute(ddl)
-                    else:
-                        _create_tables_from_schema(cur, schema_info, "postgresql")
+            with conn.cursor() as cur:
+                # Phase 1: DDL — commit separately so INSERT can see the tables
+                ddl = (schema_info.get("raw_ddl") or "").strip()
+                if ddl:
+                    cleaned_ddl = _strip_database_statements(ddl)
+                    cleaned_ddl = _normalize_ddl_case(cleaned_ddl, "postgresql")
+                    try:
+                        cur.execute(cleaned_ddl)
+                    except Exception as ddl_exc:
+                        # Try statement-by-statement as fallback
+                        conn.rollback()
+                        for stmt in _split_ddl(cleaned_ddl):
+                            cur.execute(stmt)
+                else:
+                    _create_tables_from_schema(cur, schema_info, "postgresql")
+                conn.commit()
 
-                    # Insert mock data
-                    for tname, rows in (mock_data or {}).items():
-                        if not rows:
-                            continue
-                        _insert_rows_pg(cur, tname, rows)
-                        mock_preview[tname] = rows[:3]
+                # Phase 2: INSERT mock data — normalise table name case
+                schema_tables_lower = {
+                    k.lower(): k for k in (schema_info.get("tables") or {})
+                }
+                for tname, rows in (mock_data or {}).items():
+                    if not rows:
+                        continue
+                    # Resolve to the actual table name as stored in schema
+                    resolved_tname = schema_tables_lower.get(tname.lower(), tname)
+                    _insert_rows_pg(cur, resolved_tname, rows)
+                    mock_preview[resolved_tname] = rows[:3]
+                conn.commit()
 
-                    # Execute query
-                    t0 = time.monotonic()
-                    cur.execute(sql)
-                    duration_ms = int((time.monotonic() - t0) * 1000)
-                    rows_out = [
-                        dict(zip([d.name for d in cur.description], row))
-                        for row in (cur.fetchmany(_MAX_ROWS) if cur.description else [])
-                    ]
-                    columns = [d.name for d in (cur.description or [])]
+                # Phase 3: Execute user query
+                t0 = time.monotonic()
+                cur.execute(sql)
+                duration_ms = int((time.monotonic() - t0) * 1000)
+                rows_out = [
+                    dict(zip([d.name for d in cur.description], row))
+                    for row in (cur.fetchmany(_MAX_ROWS) if cur.description else [])
+                ]
+                columns = [d.name for d in (cur.description or [])]
 
             return SandboxResult(
                 ok=True, columns=columns, rows=rows_out, error="",
@@ -488,16 +604,19 @@ def _run_postgresql(
         except Exception as exc:
             return _fail("postgresql", str(exc))
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
-def _pg_connect_with_retry(user, password, dbname, port, retries=20):
+def _pg_connect_with_retry(user, password, dbname, port, host, retries=20):
     import psycopg2
     last: Exception | None = None
     for _ in range(retries):
         try:
             return psycopg2.connect(
-                host="127.0.0.1", port=port,
+                host=host, port=port,
                 user=user, password=password, dbname=dbname,
                 connect_timeout=3,
             )
@@ -514,7 +633,7 @@ def _insert_rows_pg(cur, tname: str, rows: list[dict[str, Any]]) -> None:
     col_list = ", ".join(f'"{c}"' for c in cols)
     placeholders = ", ".join(["%s"] * len(cols))
     sql = f'INSERT INTO "{tname}" ({col_list}) VALUES ({placeholders})'
-    cur.executemany(sql, [[r.get(c) for c in cols] for r in rows])
+    cur.executemany(sql, [tuple(r.get(c) for c in cols) for r in rows])
 
 
 # ---------------------------------------------------------------------------
@@ -526,33 +645,38 @@ def _run_mysql(
     schema_info: dict,
     mock_data: dict[str, list[dict[str, Any]]],
 ) -> SandboxResult:
-    db_pass = secrets.token_urlsafe(16)
+    root_pass = secrets.token_urlsafe(16)
     db_name = "sandbox"
-    db_user = "sandbox"
 
     env = {
-        "MYSQL_ROOT_PASSWORD": secrets.token_urlsafe(16),
+        "MYSQL_ROOT_PASSWORD": root_pass,
         "MYSQL_DATABASE": db_name,
-        "MYSQL_USER": db_user,
-        "MYSQL_PASSWORD": db_pass,
     }
     ports = {"3306/tcp": None}
 
     with _ephemeral_container("mysql:8.4", env, ports, "mysql") as ctr:
         port = _get_host_port(ctr, "3306/tcp")
-        _wait_for_port("127.0.0.1", port)
+        host = _sandbox_host()
+        _wait_for_port(host, port)
 
         import pymysql
-        conn = _mysql_connect_with_retry(db_user, db_pass, db_name, port)
+        conn = _mysql_connect_with_retry("root", root_pass, db_name, port, host)
         try:
             warnings: list[str] = []
             mock_preview: dict[str, list[dict[str, Any]]] = {}
 
             with conn:
                 with conn.cursor() as cur:
+                    # CRITICAL: Always force the correct database context first
+                    cur.execute(f"USE `{db_name}`")
+
                     ddl = (schema_info.get("raw_ddl") or "").strip()
                     if ddl:
-                        for stmt in _split_ddl(ddl):
+                        # Strip CREATE DATABASE / USE statements from user DDL
+                        # to avoid conflicting with sandbox database context
+                        cleaned_ddl = _strip_database_statements(ddl)
+                        cleaned_ddl = _normalize_ddl_case(cleaned_ddl, "mysql")
+                        for stmt in _split_ddl(cleaned_ddl):
                             cur.execute(stmt)
                     else:
                         _create_tables_from_schema(cur, schema_info, "mysql")
@@ -560,8 +684,9 @@ def _run_mysql(
                     for tname, rows in (mock_data or {}).items():
                         if not rows:
                             continue
-                        _insert_rows_mysql(cur, tname, rows)
-                        mock_preview[tname] = rows[:3]
+                        resolved_tname = _resolve_table_name(tname, schema_info)
+                        _insert_rows_mysql(cur, resolved_tname, rows)
+                        mock_preview[resolved_tname] = rows[:3]
 
                     t0 = time.monotonic()
                     cur.execute(sql)
@@ -578,16 +703,19 @@ def _run_mysql(
         except Exception as exc:
             return _fail("mysql", str(exc))
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
-def _mysql_connect_with_retry(user, password, db, port, retries=30):
+def _mysql_connect_with_retry(user, password, db, port, host, retries=30):
     import pymysql
     last: Exception | None = None
     for _ in range(retries):
         try:
             return pymysql.connect(
-                host="127.0.0.1", port=port,
+                host=host, port=port,
                 user=user, password=password, database=db,
                 connect_timeout=3, autocommit=True,
             )
@@ -604,7 +732,13 @@ def _insert_rows_mysql(cur, tname: str, rows: list[dict[str, Any]]) -> None:
     col_list = ", ".join(f"`{c}`" for c in cols)
     placeholders = ", ".join(["%s"] * len(cols))
     sql = f"INSERT INTO `{tname}` ({col_list}) VALUES ({placeholders})"
-    cur.executemany(sql, [[r.get(c) for c in cols] for r in rows])
+    # Use tuples explicitly — more compatible across PyMySQL versions
+    data = [tuple(r.get(c) for c in cols) for r in rows]
+    cur.executemany(sql, data)
+    # Explicit commit after each table's inserts (safety for autocommit edge cases)
+    cur.connection.commit()
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -635,10 +769,11 @@ def _run_mssql(
         env, ports, "mssql",
     ) as ctr:
         port = _get_host_port(ctr, "1433/tcp")
-        _wait_for_port("127.0.0.1", port)
+        host = _sandbox_host()
+        _wait_for_port(host, port)
 
         import pyodbc
-        conn = _mssql_connect_with_retry(sa_pass, port)
+        conn = _mssql_connect_with_retry(sa_pass, port, host)
         try:
             mock_preview: dict[str, list[dict[str, Any]]] = {}
 
@@ -664,8 +799,9 @@ def _run_mssql(
                 for tname, rows in (mock_data or {}).items():
                     if not rows:
                         continue
-                    _insert_rows_mssql(cur, tname, rows)
-                    mock_preview[tname] = rows[:3]
+                    resolved_tname = _resolve_table_name(tname, schema_info)
+                    _insert_rows_mssql(cur, resolved_tname, rows)
+                    mock_preview[resolved_tname] = rows[:3]
 
                 conn.commit()
 
@@ -684,14 +820,17 @@ def _run_mssql(
         except Exception as exc:
             return _fail("mssql", str(exc), warnings)
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
-def _mssql_connect_with_retry(sa_pass, port, retries=40):
+def _mssql_connect_with_retry(sa_pass, port, host, retries=40):
     import pyodbc
     conn_str = (
         f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-        f"SERVER=127.0.0.1,{port};"
+        f"SERVER={host},{port};"
         f"UID=sa;PWD={sa_pass};"
         f"TrustServerCertificate=yes;"
         f"Connection Timeout=3;"
@@ -737,7 +876,8 @@ def _run_bigquery(
         command=f"--project={project} --data-from-query-emulation",
     ) as ctr:
         grpc_port = _get_host_port(ctr, "9050/tcp")
-        _wait_for_port("127.0.0.1", grpc_port, timeout=30)
+        host = _sandbox_host()
+        _wait_for_port(host, grpc_port, timeout=30)
 
         try:
             from google.cloud import bigquery
@@ -748,7 +888,7 @@ def _run_bigquery(
                 project=project,
                 credentials=AnonymousCredentials(),
                 client_options=ClientOptions(
-                    api_endpoint=f"http://127.0.0.1:{grpc_port}"
+                    api_endpoint=f"http://{host}:{grpc_port}"
                 ),
             )
 
@@ -772,7 +912,7 @@ def _run_bigquery(
                 tbl = bigquery.Table(table_ref, schema=bq_schema)
                 client.create_table(tbl, exists_ok=True)
 
-                rows = mock_data.get(tname) or []
+                rows = mock_data.get(tname) or mock_data.get(tname.lower()) or []
                 if rows:
                     client.insert_rows_json(table_ref, rows)
                     mock_preview[tname] = rows[:3]
@@ -834,7 +974,17 @@ def _rewrite_bq_refs(sql: str, dataset: str, project: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _split_ddl(ddl: str) -> list[str]:
-    return [s.strip() for s in ddl.split(";") if s.strip()]
+    """
+    Split DDL into individual statements, filtering empty results
+    and stripping inline comments to avoid parse errors.
+    Does NOT split on semicolons inside quoted strings.
+    """
+    # Remove single-line comments
+    ddl = re.sub(r"--[^\n]*", "", ddl)
+    # Remove multi-line comments
+    ddl = re.sub(r"/\*.*?\*/", "", ddl, flags=re.DOTALL)
+    statements = [s.strip() for s in ddl.split(";") if s.strip()]
+    return statements
 
 
 def _create_tables_from_schema(cur, schema_info: dict, dialect: str) -> None:
@@ -848,8 +998,13 @@ def _create_tables_from_schema(cur, schema_info: dict, dialect: str) -> None:
         for cname, cinfo in cols.items():
             ctype = _portable_type(cinfo.get("type", ""), dialect)
             null_clause = " NOT NULL" if cinfo.get("not_null") else ""
-            col_defs.append(f'  "{cname}" {ctype}{null_clause}')
-        create_sql = f'CREATE TABLE "{tname}" (\n' + ",\n".join(col_defs) + "\n)"
+            # Use dialect-appropriate quoting for identifiers
+            col_defs.append(f"  {_quote_id(cname, dialect)} {ctype}{null_clause}")
+        create_sql = (
+            f"CREATE TABLE {_quote_id(tname, dialect)} (\n"
+            + ",\n".join(col_defs)
+            + "\n)"
+        )
         cur.execute(create_sql)
 
 

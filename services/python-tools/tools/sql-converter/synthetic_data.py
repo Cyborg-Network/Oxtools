@@ -79,8 +79,22 @@ async def generate_synthetic_data(
         )
         data = _parse_json(raw)
         if data and isinstance(data, dict):
-            # Validate and coerce types
-            return _coerce_types(data, schema_info)
+            coerced = _coerce_types(data, schema_info)
+            # Normalize table name keys to lowercase (matches schema_info)
+            coerced = {k.lower(): v for k, v in coerced.items()}
+
+            # Fill in any tables the LLM missed using the deterministic fallback
+            expected_tables = {
+                t.lower() for t in (schema_info.get("table_names") or [])
+            }
+            missing = expected_tables - set(coerced.keys())
+            if missing:
+                fallback = _deterministic_fallback(schema_info, rows_per_table)
+                for tname in missing:
+                    if tname in fallback:
+                        coerced[tname] = fallback[tname]
+
+            return coerced
     except Exception:
         pass
 
@@ -217,7 +231,8 @@ def _deterministic_fallback(
             rows.append(row)
         result[tname] = rows
 
-    return result
+    # Ensure all keys are lowercase for consistency
+    return {k.lower(): v for k, v in result.items()}
 
 
 def _mock_value(table: str, column: str, raw_type: str, idx: int) -> Any:
