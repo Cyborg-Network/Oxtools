@@ -1,3 +1,14 @@
+# Core — already present in v1
 sqlglot>=25.0.0
 pydantic>=2.0.0
 httpx>=0.27.0
+
+# Multi-dialect sandbox
+docker>=7.0.0               # Docker SDK for Python (manage ephemeral containers)
+psycopg2-binary>=2.9.9      # PostgreSQL driver
+pymysql>=1.1.0              # MySQL driver
+pyodbc>=5.1.0               # SQL Server driver (requires unixODBC in Docker image)
+
+# BigQuery emulator client
+google-cloud-bigquery>=3.20.0
+google-auth>=2.29.0
