@@ -62,6 +62,10 @@ def parse_schema(ddl: str) -> dict:
     for stmt in statements:
         if not isinstance(stmt, exp.Create):
             continue
+        # Only process CREATE TABLE — skip DATABASE, SCHEMA, INDEX, VIEW, etc.
+        kind = stmt.args.get("kind")
+        if kind != "TABLE":
+            continue
         table_expr = stmt.find(exp.Table)
         if table_expr is None:
             continue

@@ -249,15 +249,20 @@ def run_sandbox(
 # SQLite path (uses pre-generated mock_data or falls back to built-in generator)
 # ---------------------------------------------------------------------------
 
-def _sqlite_type(raw: str) -> str:
+def _normalize_sqlite_type(raw: str) -> str:
+    """Normalize a raw type string to a sqlite storage class."""
     t = (raw or "").upper()
-    if any(x in t for x in ("INT", "SERIAL", "BIGSERIAL")):
+    if any(x in t for x in ("BOOL", "BOOLEAN", "TINYINT(1)", "BIT")):
+        return "INTEGER"
+    if any(x in t for x in ("INT", "SERIAL", "BIGINT", "SMALLINT", "TINYINT")):
         return "INTEGER"
     if any(x in t for x in ("DECIMAL", "NUMERIC", "REAL", "DOUBLE", "FLOAT", "MONEY")):
         return "REAL"
-    if "BOOL" in t:
-        return "INTEGER"
     return "TEXT"
+
+
+def _sqlite_type(raw: str) -> str:
+    return _normalize_sqlite_type(raw)
 
 
 def _strip_id(name: str) -> str:
@@ -271,14 +276,41 @@ def _qid(name: str) -> str:
 def _mock_value(table: str, column: str, raw_type: str, row_index: int) -> Any:
     """Deterministic mock value used as fallback when mock_data is empty."""
     name = column.lower()
-    typ = (raw_type or "").upper()
+    raw_upper = (raw_type or "").upper()
+
+    enum_match = re.search(r"\b(?:ENUM|SET)\s*\((.*?)\)", raw_type or "", re.IGNORECASE | re.DOTALL)
+    if enum_match:
+        values = re.findall(r"'((?:\\'|[^'])*)'|\"((?:\\\"|[^\"])*)\"", enum_match.group(1))
+        enum_vals = [a or b for a, b in values if (a or b)]
+        enum_vals = [v.replace("\\'", "'").replace('\\"', '"') for v in enum_vals]
+        if enum_vals:
+            if "status" in name:
+                preferred = [
+                    v for v in enum_vals
+                    if any(k in v.lower() for k in ("active", "pending", "trial", "paid", "free"))
+                ]
+                if preferred:
+                    return preferred[(row_index - 1) % len(preferred)]
+            return enum_vals[(row_index - 1) % len(enum_vals)]
+
+    if any(x in raw_upper for x in ("BOOL", "BOOLEAN", "BIT", "TINYINT(1)")):
+        return row_index % 2
+
+    if raw_upper.startswith("TIME") and "TIMESTAMP" not in raw_upper and "DATETIME" not in raw_upper:
+        return f"{(row_index * 3) % 24:02d}:{(row_index * 7) % 60:02d}:00"
+
+    varchar_match = re.search(r"\b(?:VARCHAR|CHAR|NVARCHAR|NCHAR)\s*\(\s*(\d+)\s*\)", raw_type or "", re.IGNORECASE)
+    varchar_limit = int(varchar_match.group(1)) if varchar_match else None
+
+    def clip_text(value: str) -> str:
+        return value[:varchar_limit] if varchar_limit is not None else value
 
     if name == "id" or name.endswith("_id"):
         return row_index
     if "email" in name:
-        return f"{table}{row_index}@example.test"
+        return clip_text(f"{table}{row_index}@example.test")
     if "name" in name or "title" in name:
-        return f"{table.title()} {row_index}"
+        return clip_text(f"{table.title()} {row_index}")
     if "status" in name:
         return ["active", "pending", "archived"][row_index % 3]
     if "category" in name or "type" in name:
@@ -289,13 +321,19 @@ def _mock_value(table: str, column: str, raw_type: str, row_index: int) -> Any:
         return round(19.5 + row_index * 7.25, 2)
     if "count" in name or "qty" in name or "quantity" in name:
         return row_index * 2
-    if "BOOL" in typ:
-        return row_index % 2
-    if any(x in typ for x in ("INT", "SERIAL")):
+    # Type-based fallbacks using normalised categories
+    storage_type = _normalize_sqlite_type(raw_type)
+    if storage_type == "INTEGER":
         return row_index * 10
-    if any(x in typ for x in ("DECIMAL", "NUMERIC", "REAL", "DOUBLE", "FLOAT")):
+    if storage_type == "REAL":
         return round(row_index * 3.14, 2)
-    return f"{column}_{row_index}"
+    if "TIMESTAMP" in raw_upper or "DATETIME" in raw_upper:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(1700000000 + row_index * 86400))
+    if "DATE" in raw_upper:
+        return time.strftime("%Y-%m-%d", time.gmtime(1700000000 + row_index * 86400))
+    if "created" in name or "updated" in name or "date" in name or "time" in name:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(1700000000 + row_index * 86400))
+    return clip_text(f"{column}_{row_index}")
 
 
 def _build_sqlite_db(
@@ -305,6 +343,8 @@ def _build_sqlite_db(
     rows_per_table: int,
 ) -> dict[str, list[dict[str, Any]]]:
     """Create tables and insert data. Returns mock_preview dict."""
+    # Disable FK enforcement during load so insertion order doesn't matter
+    conn.execute("PRAGMA foreign_keys = OFF")
     tables = schema_info.get("tables") or {}
     mock_preview: dict[str, list[dict[str, Any]]] = {}
 
@@ -353,6 +393,8 @@ def _build_sqlite_db(
         mock_preview[tname] = rows[:3]
 
     conn.commit()
+    # Re-enable FK enforcement before the user query runs
+    conn.execute("PRAGMA foreign_keys = ON")
     return mock_preview
 
 
@@ -714,11 +756,14 @@ def _mysql_connect_with_retry(user, password, db, port, host, retries=30):
     last: Exception | None = None
     for _ in range(retries):
         try:
-            return pymysql.connect(
+            conn = pymysql.connect(
                 host=host, port=port,
                 user=user, password=password, database=db,
                 connect_timeout=3, autocommit=True,
             )
+            with conn.cursor() as cur:
+                cur.execute("SET SESSION sql_mode = ''")
+            return conn
         except Exception as exc:
             last = exc
             time.sleep(2)
@@ -784,15 +829,25 @@ def _run_mssql(
 
                 ddl = (schema_info.get("raw_ddl") or "").strip()
                 if ddl:
-                    # Translate to T-SQL
+                    # Strip CREATE DATABASE / USE / DROP DATABASE from user DDL
+                    cleaned_ddl = _strip_database_statements(ddl)
+                    cleaned_ddl = _normalize_ddl_case(cleaned_ddl, "mssql")
+                    # Translate to T-SQL using the correct source dialect
+                    # _normalize_ddl_case already re-generates via sqlglot so
+                    # the DDL is now in a canonical form; translate each stmt
                     try:
-                        import sqlglot
-                        translated = sqlglot.transpile(ddl, read="postgres", write="tsql")
-                        for stmt in translated:
-                            cur.execute(stmt)
+                        import sqlglot as _sg
+                        for stmt in _split_ddl(cleaned_ddl):
+                            translated_stmts = _sg.transpile(
+                                stmt, read="mysql", write="tsql"
+                            )
+                            for t in translated_stmts:
+                                if t.strip():
+                                    cur.execute(t)
                     except Exception:
-                        for stmt in _split_ddl(ddl):
-                            cur.execute(stmt)
+                        for stmt in _split_ddl(cleaned_ddl):
+                            if stmt.strip():
+                                cur.execute(stmt)
                 else:
                     _create_tables_from_schema(cur, schema_info, "mssql")
 

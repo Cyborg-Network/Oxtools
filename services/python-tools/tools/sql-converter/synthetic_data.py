@@ -26,6 +26,40 @@ from llm_client import call_oxlo_chat
 
 _MODEL = "qwen-3-coder-30b"
 
+
+def _enum_values(raw_type: str) -> list[str]:
+    match = re.search(r"\b(?:ENUM|SET)\s*\((.*?)\)", raw_type or "", re.IGNORECASE | re.DOTALL)
+    if not match:
+        return []
+    parts = re.findall(r"'((?:\\'|[^'])*)'|\"((?:\\\"|[^\"])*)\"", match.group(1))
+    values = [a or b for a, b in parts if (a or b)]
+    return [v.replace("\\'", "'").replace('\\"', '"') for v in values]
+
+
+def _varchar_limit(raw_type: str) -> int | None:
+    match = re.search(r"\b(?:VARCHAR|CHAR|NVARCHAR|NCHAR)\s*\(\s*(\d+)\s*\)", raw_type or "", re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _normalize_type(raw_type: str) -> str:
+    t = (raw_type or "").upper()
+    if any(x in t for x in ("BOOL", "BOOLEAN", "TINYINT(1)", "BIT")):
+        return "BOOL"
+    if any(x in t for x in ("INT", "SERIAL", "BIGINT", "SMALLINT", "TINYINT")):
+        return "INT"
+    if any(x in t for x in ("FLOAT", "DOUBLE", "REAL", "DECIMAL", "NUMERIC", "MONEY")):
+        return "FLOAT"
+    if any(x in t for x in ("DATE", "TIME", "TIMESTAMP", "DATETIME")):
+        return "DATE"
+    return "STRING"
+
+
+def _clip_text(value: str, raw_type: str) -> str:
+    limit = _varchar_limit(raw_type)
+    if limit is not None:
+        return value[:limit]
+    return value
+
 _SYSTEM = """\
 You are a database expert generating realistic synthetic test data.
 Given a SQL schema (DDL), generate coherent rows for each table.
@@ -150,37 +184,97 @@ def _coerce_types(
         if not isinstance(rows, list):
             continue
         col_types = {}
-        if tname in tables:
+        tname_lower = tname.lower()
+        matched_tname = next((k for k in tables if k.lower() == tname_lower), None)
+        if matched_tname:
             col_types = {
-                cname: cinfo.get("type", "TEXT")
-                for cname, cinfo in tables[tname].get("columns", {}).items()
+                cname.lower(): cinfo.get("type", "TEXT")
+                for cname, cinfo in tables[matched_tname].get("columns", {}).items()
             }
-        result[tname] = [_coerce_row(row, col_types) for row in rows if isinstance(row, dict)]
+        result[tname] = [
+            _coerce_row({k.lower(): v for k, v in row.items()}, col_types)
+            for row in rows
+            if isinstance(row, dict)
+        ]
 
     return result
+
+
+def _decimal_precision(raw_type: str) -> tuple[int, int] | None:
+    """
+    Parse DECIMAL(M, D) or NUMERIC(M, D) and return (M, D).
+    Returns None if the type has no explicit precision.
+    """
+    m = re.search(
+        r"\b(?:DECIMAL|NUMERIC|DEC|FIXED)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)",
+        raw_type or "",
+        re.IGNORECASE,
+    )
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def _clamp_decimal(val: float, raw_type: str) -> float:
+    """
+    Clamp a float to fit within DECIMAL(M, D).
+    e.g. DECIMAL(3, 2) -> max 9.99, min -9.99.
+    """
+    precision = _decimal_precision(raw_type)
+    if precision is None:
+        return val
+    m, d = precision
+    integer_digits = m - d
+    max_val = (10**integer_digits) - (10 ** -d)
+    return max(min(val, max_val), -max_val)
 
 
 def _coerce_row(row: dict, col_types: dict[str, str]) -> dict[str, Any]:
     out = {}
     for col, val in row.items():
-        raw_type = (col_types.get(col) or "TEXT").upper()
-        if any(x in raw_type for x in ("INT", "SERIAL", "BIGSERIAL")):
+        raw_type = col_types.get(col) or "TEXT"
+        category = _normalize_type(raw_type)
+        enum_vals = _enum_values(raw_type)
+        if enum_vals:
+            if val is None:
+                out[col] = enum_vals[0]
+            elif str(val) in enum_vals:
+                out[col] = str(val)
+            else:
+                val_lower = str(val).lower()
+                ci_match = next((ev for ev in enum_vals if ev.lower() == val_lower), None)
+                out[col] = (
+                    ci_match
+                    if ci_match is not None
+                    else enum_vals[(hash(f"{col}:{val}") % len(enum_vals))]
+                )
+            continue
+        if category == "INT":
             try:
                 out[col] = int(val) if val is not None else None
             except (TypeError, ValueError):
-                out[col] = val
-        elif any(x in raw_type for x in ("FLOAT", "DOUBLE", "REAL", "DECIMAL", "NUMERIC", "MONEY")):
+                out[col] = None
+        elif category == "FLOAT":
             try:
-                out[col] = float(val) if val is not None else None
+                f = float(val) if val is not None else None
+                out[col] = _clamp_decimal(f, raw_type) if f is not None else None
             except (TypeError, ValueError):
-                out[col] = val
-        elif "BOOL" in raw_type:
-            if isinstance(val, str):
-                out[col] = val.lower() in ("true", "1", "yes")
+                out[col] = None
+        elif category == "BOOL":
+            if val is None:
+                out[col] = None
+            elif isinstance(val, bool):
+                out[col] = 1 if val else 0
+            elif isinstance(val, int):
+                out[col] = 1 if val else 0
+            elif isinstance(val, str):
+                out[col] = 1 if val.lower() in ("true", "1", "yes", "on") else 0
             else:
-                out[col] = bool(val) if val is not None else None
-        else:
+                out[col] = 1 if val else 0
+        elif category == "DATE":
             out[col] = str(val) if val is not None else None
+        else:
+            out[col] = _clip_text(str(val), raw_type) if val is not None else None
     return out
 
 
@@ -237,7 +331,25 @@ def _deterministic_fallback(
 
 def _mock_value(table: str, column: str, raw_type: str, idx: int) -> Any:
     name = column.lower()
-    t = raw_type.upper()
+    raw_upper = (raw_type or "").upper()
+    category = _normalize_type(raw_type)
+    enum_vals = _enum_values(raw_type)
+
+    if enum_vals:
+        if "status" in name:
+            preferred = [
+                v for v in enum_vals
+                if any(k in v.lower() for k in ("active", "pending", "trial", "paid", "free"))
+                ]
+            if preferred:
+                return preferred[(idx - 1) % len(preferred)]
+        return enum_vals[(idx - 1) % len(enum_vals)]
+
+    if category == "BOOL":
+        return idx % 2
+
+    if raw_upper.startswith("TIME") and "TIMESTAMP" not in raw_upper and "DATETIME" not in raw_upper:
+        return f"{(idx * 3) % 24:02d}:{(idx * 7) % 60:02d}:00"
 
     # Identity / PK
     if name == "id" or name.endswith("_id") and "fk" not in name:
@@ -254,11 +366,11 @@ def _mock_value(table: str, column: str, raw_type: str, idx: int) -> Any:
         surnames = ["Smith", "Jones", "Williams", "Brown", "Davis", "Miller", "Wilson", "Moore"]
         return surnames[(idx - 1) % len(surnames)]
     if "name" in name or "title" in name:
-        return f"{table.title()} {idx}"
+        return _clip_text(f"{table.title()} {idx}", raw_type)
     if "phone" in name:
         return f"+1-555-{idx:04d}"
     if "address" in name or "street" in name:
-        return f"{idx * 10} Main Street"
+        return _clip_text(f"{idx * 10} Main Street", raw_type)
     if "city" in name:
         cities = ["New York", "London", "Paris", "Tokyo", "Berlin"]
         return cities[(idx - 1) % len(cities)]
@@ -273,9 +385,11 @@ def _mock_value(table: str, column: str, raw_type: str, idx: int) -> Any:
     if "count" in name or "qty" in name or "quantity" in name:
         return idx * 2
     if "created" in name or "updated" in name or "date" in name or "time" in name:
-        return (datetime(2025, 1, 1) + timedelta(days=idx * 7)).isoformat(sep="T")
+        if "TIMESTAMP" in raw_upper or "DATETIME" in raw_upper:
+            return (datetime(2025, 1, 1) + timedelta(days=idx * 7)).strftime("%Y-%m-%d %H:%M:%S")
+        return (datetime(2025, 1, 1) + timedelta(days=idx * 7)).strftime("%Y-%m-%d")
     if "description" in name or "notes" in name or "comment" in name:
-        return f"Sample {table} record number {idx}."
+        return _clip_text(f"Sample {table} record number {idx}.", raw_type)
     if "url" in name or "link" in name:
         return f"https://example.com/{table}/{idx}"
     if "image" in name or "avatar" in name or "photo" in name:
@@ -285,12 +399,14 @@ def _mock_value(table: str, column: str, raw_type: str, idx: int) -> Any:
     if "rating" in name or "score" in name:
         return round(1 + (idx % 5), 1)
     if "active" in name or "enabled" in name or "verified" in name:
-        return bool(idx % 2)
+        return idx % 2
     # Type-based fallbacks
-    if any(x in t for x in ("INT", "SERIAL")):
+    if category == "INT":
         return idx * 10
-    if any(x in t for x in ("FLOAT", "DOUBLE", "REAL", "DECIMAL", "NUMERIC")):
-        return round(idx * 3.14, 2)
-    if "BOOL" in t:
-        return bool(idx % 2)
-    return f"{column}_{idx}"
+    if category == "FLOAT":
+        return _clamp_decimal(round(idx * 3.14, 2), raw_type)
+    if category == "DATE":
+        if "TIMESTAMP" in raw_upper or "DATETIME" in raw_upper:
+            return (datetime(2025, 1, 1) + timedelta(days=idx * 7)).strftime("%Y-%m-%d %H:%M:%S")
+        return (datetime(2025, 1, 1) + timedelta(days=idx * 7)).strftime("%Y-%m-%d")
+    return _clip_text(f"{column}_{idx}", raw_type)
