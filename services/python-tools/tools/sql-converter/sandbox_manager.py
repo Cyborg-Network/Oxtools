@@ -294,7 +294,7 @@ def _mock_value(table: str, column: str, raw_type: str, row_index: int) -> Any:
             return enum_vals[(row_index - 1) % len(enum_vals)]
 
     if any(x in raw_upper for x in ("BOOL", "BOOLEAN", "BIT", "TINYINT(1)")):
-        return row_index % 2
+        return bool(row_index % 2)
 
     if raw_upper.startswith("TIME") and "TIMESTAMP" not in raw_upper and "DATETIME" not in raw_upper:
         return f"{(row_index * 3) % 24:02d}:{(row_index * 7) % 60:02d}:00"

@@ -13,6 +13,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { getPlanDisplayName } from "@/lib/auth";
 
 import type { ParsedSchema, ExecutionMode, ExecutionState } from "./types";
+import { extractSqlFromGeneration } from "./lib/result-parser";
 import { SchemaUploader } from "./components/schema-uploader";
 import { SchemaPreview } from "./components/schema-preview";
 import { QueryBuilder } from "./components/query-builder";
@@ -47,7 +48,9 @@ export default function SqlConverterPage() {
   // ── Custom UI state ───────────────────────────────────────────────────────
   const [schema, setSchema] = useState<ParsedSchema | null>(null);
   const [mode, setMode] = useState<ExecutionMode>("A");
+  const [executedMode, setExecutedMode] = useState<ExecutionMode>("A");
   const [hasSuccessfulGeneration, setHasSuccessfulGeneration] = useState(false);
+  const [generatedSql, setGeneratedSql] = useState("");
   const [selectedDialect, setSelectedDialect] = useState("postgresql");
 
   const [execution, setExecution] = useState<ExecutionState>({
@@ -72,11 +75,11 @@ export default function SqlConverterPage() {
       const trimmed = line.trim();
       if (!trimmed || trimmed === ".") continue;
 
-      // Detect [N/6] step lines
-      const stepMatch = trimmed.match(/^\[(\d+)\/6\]\s*(.+)/);
+      // Detect [N/M] step lines (generate: /6, sandbox: /3)
+      const stepMatch = trimmed.match(/^\[(\d+)\/(\d+)\]\s*(.+)/);
       if (stepMatch) {
         currentStep = parseInt(stepMatch[1], 10);
-        stepLabel = stepMatch[2].trim();
+        stepLabel = stepMatch[3].trim();
         logs.push(trimmed);
         continue;
       }
@@ -108,16 +111,21 @@ export default function SqlConverterPage() {
         logs: [...prev.logs, `[ERROR] ${error.message}`],
       }));
     } else if (hasResultSeparator && resultText.trim()) {
+      const maxStep = executedMode === "B" ? 3 : 6;
       setExecution({
         status: "success",
-        currentStep: 6,
+        currentStep: maxStep,
         stepLabel: "Complete",
         resultText: result,
         logs,
       });
-      if (mode === "A") setHasSuccessfulGeneration(true);
+      if (executedMode === "A") {
+        setHasSuccessfulGeneration(true);
+        const sql = extractSqlFromGeneration(resultText);
+        if (sql) setGeneratedSql(sql);
+      }
     }
-  }, [result, isLoading, error, mode]);
+  }, [result, isLoading, error, executedMode]);
 
   // ── Execute handlers ──────────────────────────────────────────────────────
   const handleExecuteA = useCallback(
@@ -127,6 +135,7 @@ export default function SqlConverterPage() {
         return;
       }
       setSelectedDialect(dialect);
+      setExecutedMode("A");
       setExecution({
         status: "running",
         currentStep: 1,
@@ -151,10 +160,11 @@ export default function SqlConverterPage() {
         setShowUpgradeDialog(true);
         return;
       }
+      setExecutedMode("B");
       setExecution({
         status: "running",
-        currentStep: 5,
-        stepLabel: "Running Sandbox…",
+        currentStep: 1,
+        stepLabel: "Parsing Schema…",
         resultText: "",
         logs: [`Started: Sandbox mode (${dialect.toUpperCase()})`],
       });
@@ -175,6 +185,7 @@ export default function SqlConverterPage() {
     setSchema(null);
     setMode("A");
     setHasSuccessfulGeneration(false);
+    setGeneratedSql("");
     setExecution({ status: "idle", currentStep: 0, stepLabel: "", resultText: "", logs: [] });
     reset();
   }, [reset]);
@@ -257,6 +268,7 @@ export default function SqlConverterPage() {
                   setMode={setMode}
                   hasSuccessfulGeneration={hasSuccessfulGeneration}
                   selectedDialect={selectedDialect}
+                  generatedSql={generatedSql}
                   onExecuteA={handleExecuteA}
                   onExecuteB={handleExecuteB}
                   isLoading={isLoading}
@@ -270,6 +282,7 @@ export default function SqlConverterPage() {
             <section>
               <ExecutionView
                 execution={execution}
+                mode={executedMode}
                 isLoading={isLoading}
                 error={error}
               />

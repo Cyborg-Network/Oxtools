@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sparkles, TerminalSquare, Lock } from "lucide-react";
 import { CodeEditor } from "@/components/code-editor";
 import type { ExecutionMode } from "../types";
@@ -10,6 +10,7 @@ interface QueryBuilderProps {
   setMode: (mode: ExecutionMode) => void;
   hasSuccessfulGeneration: boolean;
   selectedDialect: string;
+  generatedSql: string;
   onExecuteA: (query: string, dialect: string) => void;
   onExecuteB: (sandboxQuery: string, dialect: string) => void;
   isLoading: boolean;
@@ -28,6 +29,7 @@ export function QueryBuilder({
   setMode,
   hasSuccessfulGeneration,
   selectedDialect,
+  generatedSql,
   onExecuteA,
   onExecuteB,
   isLoading,
@@ -35,6 +37,16 @@ export function QueryBuilder({
   const [nlQuery, setNlQuery] = useState("");
   const [dialect, setDialect] = useState(selectedDialect || "postgresql");
   const [sandboxQuery, setSandboxQuery] = useState("");
+
+  useEffect(() => {
+    setDialect(selectedDialect);
+  }, [selectedDialect]);
+
+  useEffect(() => {
+    if (hasSuccessfulGeneration && generatedSql) {
+      setSandboxQuery(generatedSql);
+    }
+  }, [hasSuccessfulGeneration, generatedSql]);
 
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -116,7 +128,7 @@ export function QueryBuilder({
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               >
                 <Sparkles className="w-4 h-4" />
-                {isLoading ? "Generating…" : "Generate SQL & Test"}
+                {isLoading ? "Generating…" : "Generate SQL"}
               </button>
             </div>
           )}

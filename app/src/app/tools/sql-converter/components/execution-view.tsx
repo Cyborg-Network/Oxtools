@@ -10,17 +10,20 @@ import {
   ChevronRight,
   ChevronDown,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 import { ResultViewer } from "@/components/result-viewer";
-import type { ExecutionState } from "../types";
+import type { ExecutionMode, ExecutionState } from "../types";
+import { parseGenerationOutput, parseSandboxOutput } from "../lib/result-parser";
 
 interface ExecutionViewProps {
   execution: ExecutionState;
+  mode: ExecutionMode;
   isLoading: boolean;
   error: { message: string } | null;
 }
 
-const STEP_LABELS = [
+const GENERATE_STEP_LABELS = [
   "Parsing Schema",
   "Classifying Intent",
   "Generating SQL",
@@ -29,46 +32,56 @@ const STEP_LABELS = [
   "Running Sandbox",
 ];
 
-export function ExecutionView({ execution, isLoading, error }: ExecutionViewProps) {
+const SANDBOX_STEP_LABELS = [
+  "Parsing Schema",
+  "Generating Synthetic Data",
+  "Running Sandbox",
+];
+
+export function ExecutionView({ execution, mode, isLoading, error }: ExecutionViewProps) {
   const [activeTab, setActiveTab] = useState<"results" | "mock">("results");
   const [logsOpen, setLogsOpen] = useState(true);
   const logsRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll logs
+  const stepLabels = mode === "B" ? SANDBOX_STEP_LABELS : GENERATE_STEP_LABELS;
+  const stepCount = stepLabels.length;
+
   useEffect(() => {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight;
     }
   }, [execution.logs]);
 
-  // Auto-open logs while running, collapse when done
   useEffect(() => {
     if (execution.status === "running") setLogsOpen(true);
   }, [execution.status]);
 
+  useEffect(() => {
+    setActiveTab("results");
+  }, [mode, execution.status]);
+
   if (execution.status === "idle") return null;
 
-  // Parse result sections from resultText
   const resultParts = execution.resultText.split("---RESULT---");
-  const preResult = resultParts[0] || "";
   const postResult = resultParts[1] || "";
 
-  // Extract sandbox markdown from postResult
-  const sandboxSplit = postResult.split("## Sandbox Test");
-  const sqlResult = sandboxSplit[0]?.trim() || "";
-  const sandboxMarkdown = sandboxSplit[1] ? `## Sandbox Test${sandboxSplit[1]}` : "";
+  const generationMarkdown = parseGenerationOutput(postResult);
+  const { sandboxMarkdown, mockPreviewMarkdown } = parseSandboxOutput(postResult);
 
-  const hasResult = sqlResult.length > 0;
+  const hasGeneration = generationMarkdown.length > 0;
   const hasSandbox = sandboxMarkdown.length > 0;
+  const hasMockPreview = mockPreviewMarkdown.length > 0;
 
-  const stepCount = STEP_LABELS.length;
-  const progressPct = execution.status === "success"
-    ? 100
-    : Math.max(5, (execution.currentStep / stepCount) * 100);
+  const progressPct =
+    execution.status === "success"
+      ? 100
+      : Math.max(5, (execution.currentStep / stepCount) * 100);
+
+  const pipelineTitle =
+    mode === "A" ? "SQL Generation" : "Sandbox Execution";
 
   return (
     <div className="space-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* ── Pipeline card ── */}
       <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
         {/* Progress header */}
         <div className="p-5 border-b border-border/40 bg-muted/20 space-y-3">
@@ -83,14 +96,13 @@ export function ExecutionView({ execution, isLoading, error }: ExecutionViewProp
               {execution.status === "error" && (
                 <XCircle className="w-4 h-4 text-destructive" />
               )}
-              {execution.stepLabel || "Pipeline"}
+              {execution.stepLabel || pipelineTitle}
             </span>
             <span className="font-mono text-xs text-muted-foreground">
               {execution.currentStep}/{stepCount}
             </span>
           </div>
 
-          {/* Progress bar */}
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-700 ease-out ${
@@ -104,22 +116,19 @@ export function ExecutionView({ execution, isLoading, error }: ExecutionViewProp
             />
           </div>
 
-          {/* Step dots */}
           <div className="flex items-center gap-1">
-            {STEP_LABELS.map((label, i) => {
+            {stepLabels.map((label, i) => {
               const stepNum = i + 1;
-              const done = stepNum < execution.currentStep || execution.status === "success";
-              const active = stepNum === execution.currentStep && execution.status === "running";
+              const done =
+                stepNum < execution.currentStep || execution.status === "success";
+              const active =
+                stepNum === execution.currentStep && execution.status === "running";
               return (
                 <div
                   key={label}
                   title={label}
                   className={`flex-1 h-1 rounded-full transition-colors duration-300 ${
-                    done
-                      ? "bg-emerald-500"
-                      : active
-                      ? "bg-primary"
-                      : "bg-muted"
+                    done ? "bg-emerald-500" : active ? "bg-primary" : "bg-muted"
                   }`}
                 />
               );
@@ -162,7 +171,10 @@ export function ExecutionView({ execution, isLoading, error }: ExecutionViewProp
                     let color = "text-zinc-400";
                     if (line.startsWith("[") && /\[\d+\/\d+\]/.test(line))
                       color = "text-primary font-semibold";
-                    else if (line.toLowerCase().includes("[error]") || line.toLowerCase().includes("failed"))
+                    else if (
+                      line.toLowerCase().includes("[error]") ||
+                      line.toLowerCase().includes("failed")
+                    )
                       color = "text-red-400";
                     else if (line.toLowerCase().includes("[warn]"))
                       color = "text-amber-400";
@@ -176,9 +188,15 @@ export function ExecutionView({ execution, isLoading, error }: ExecutionViewProp
                   })}
                   {isLoading && (
                     <li className="py-1 flex gap-1 text-primary/50">
-                      <span className="animate-bounce" style={{ animationDelay: "0ms" }}>·</span>
-                      <span className="animate-bounce" style={{ animationDelay: "150ms" }}>·</span>
-                      <span className="animate-bounce" style={{ animationDelay: "300ms" }}>·</span>
+                      <span className="animate-bounce" style={{ animationDelay: "0ms" }}>
+                        ·
+                      </span>
+                      <span className="animate-bounce" style={{ animationDelay: "150ms" }}>
+                        ·
+                      </span>
+                      <span className="animate-bounce" style={{ animationDelay: "300ms" }}>
+                        ·
+                      </span>
                     </li>
                   )}
                 </ul>
@@ -187,50 +205,66 @@ export function ExecutionView({ execution, isLoading, error }: ExecutionViewProp
           )}
         </div>
 
-        {/* Results tabs — only show when we have content */}
-        {(hasResult || hasSandbox || error) && (
+        {/* ── Mode A: generation result only ── */}
+        {mode === "A" && (hasGeneration || error) && (
+          <div className="p-5">
+            <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-foreground">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Generated SQL
+            </div>
+            <ResultViewer
+              result={generationMarkdown}
+              isLoading={isLoading && !hasGeneration}
+              error={error}
+              streaming={isLoading}
+            />
+          </div>
+        )}
+
+        {/* ── Mode B: sandbox result + mock preview tabs ── */}
+        {mode === "B" && (hasSandbox || hasMockPreview || error) && (
           <>
             <div className="flex border-b border-border/40 bg-muted/10">
               <TabBtn
                 active={activeTab === "results"}
                 onClick={() => setActiveTab("results")}
                 icon={<TableIcon className="w-3.5 h-3.5" />}
-                label="SQL Result"
+                label="SQL Sandbox Result"
               />
               <TabBtn
                 active={activeTab === "mock"}
                 onClick={() => setActiveTab("mock")}
                 icon={<Database className="w-3.5 h-3.5" />}
                 label="Mock Preview"
-                disabled={!hasSandbox}
+                disabled={!hasMockPreview}
               />
             </div>
 
             <div className="p-5">
               {activeTab === "results" && (
                 <ResultViewer
-                  result={sqlResult}
-                  isLoading={isLoading && !hasResult}
+                  result={hasSandbox ? sandboxMarkdown : ""}
+                  isLoading={isLoading && !hasSandbox}
                   error={error}
                   streaming={isLoading}
                 />
               )}
 
-              {activeTab === "mock" && hasSandbox && (
+              {activeTab === "mock" && hasMockPreview && (
                 <ResultViewer
-                  result={sandboxMarkdown}
+                  result={mockPreviewMarkdown}
                   isLoading={false}
                   error={null}
                   streaming={false}
                 />
               )}
 
-              {activeTab === "mock" && !hasSandbox && (
+              {activeTab === "mock" && !hasMockPreview && (
                 <div className="flex flex-col items-center justify-center h-40 text-center text-muted-foreground border-2 border-dashed border-border/40 rounded-xl">
                   <Database className="w-8 h-8 mb-2 opacity-30" />
-                  <p className="text-sm font-medium">Sandbox data not yet available</p>
+                  <p className="text-sm font-medium">Mock data not yet available</p>
                   <p className="text-xs mt-1">
-                    It will appear here once the pipeline completes.
+                    Synthetic table previews appear here after sandbox execution.
                   </p>
                 </div>
               )}

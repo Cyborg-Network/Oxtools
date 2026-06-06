@@ -346,7 +346,7 @@ def _mock_value(table: str, column: str, raw_type: str, idx: int) -> Any:
         return enum_vals[(idx - 1) % len(enum_vals)]
 
     if category == "BOOL":
-        return idx % 2
+        return bool(idx % 2)
 
     if raw_upper.startswith("TIME") and "TIMESTAMP" not in raw_upper and "DATETIME" not in raw_upper:
         return f"{(idx * 3) % 24:02d}:{(idx * 7) % 60:02d}:00"
