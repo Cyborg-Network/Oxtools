@@ -41,6 +41,15 @@ _MEMORY_LIMITS: dict[str, str] = {
     "bigquery": "512m",
 }
 
+# Data directories to mount as tmpfs (RAM-only) for ephemeral sandboxes.
+# This prevents Docker from creating anonymous volumes that accumulate on disk.
+# SQLite and BigQuery emulator are stateless and don't need this.
+_TMPFS_MOUNTS: dict[str, str] = {
+    "postgresql": "/var/lib/postgresql/data",
+    "mysql":      "/var/lib/mysql",
+    "mssql":      "/var/opt/mssql",
+}
+
 _NANO_CPU_LIMIT = 1_000_000_000   # 1 vCPU
 
 _CONNECT_TIMEOUT = 60   # seconds to wait for container to be ready
@@ -488,10 +497,21 @@ def _ephemeral_container(
     dialect: str,
     command: str | None = None,
 ) -> Generator[Any, None, None]:
-    """Spin up a Docker container, yield it, then always remove it."""
+    """Spin up a Docker container, yield it, then always remove it.
+
+    Data directories are mounted as tmpfs (RAM-only) so no anonymous
+    Docker volumes are created and no disk space accumulates between runs.
+    """
     client = _docker_client()
     container = None
     mem_limit = _MEMORY_LIMITS.get(dialect, "512m")
+
+    # Build tmpfs mounts for this dialect (prevents anonymous volume creation)
+    tmpfs: dict[str, str] = {}
+    data_dir = _TMPFS_MOUNTS.get(dialect)
+    if data_dir:
+        tmpfs = {data_dir: "rw,noexec,nosuid,size=512m"}
+
     try:
         container = client.containers.run(
             image,
@@ -499,10 +519,11 @@ def _ephemeral_container(
             environment=env,
             ports=ports,
             detach=True,
-            remove=False,   # we remove manually in finally
+            remove=False,          # manual removal needed to inspect port bindings first
             mem_limit=mem_limit,
             nano_cpus=_NANO_CPU_LIMIT,
             network_mode="bridge",
+            tmpfs=tmpfs,           # ← RAM-only data dir; no Docker volume created
         )
         yield container
     finally:
@@ -512,7 +533,9 @@ def _ephemeral_container(
             except Exception:
                 pass
             try:
-                container.remove(force=True)
+                # v=True removes any anonymous volumes attached to this container.
+                # This is the safety net in case tmpfs wasn't used (e.g. bigquery).
+                container.remove(force=True, v=True)
             except Exception:
                 pass
 
