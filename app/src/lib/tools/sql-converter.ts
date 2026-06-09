@@ -3,8 +3,7 @@ import type { ToolDefinition } from "@/types";
 export const sqlConverter: ToolDefinition = {
 	id: "sql-converter",
 	name: "Natural Language to SQL",
-	description:
-		"Multi-agent pipeline: parses schema, classifies intent, generates validated SQL.",
+	description: "Multi-agent pipeline: parses schema, classifies intent, generates validated SQL.",
 	category: "data",
 	icon: "Database",
 	status: "active",
