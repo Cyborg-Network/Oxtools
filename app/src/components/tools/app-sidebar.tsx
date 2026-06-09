@@ -72,6 +72,7 @@ function CollapsibleCategory({
 		<div className="group-data-[collapsible=icon]:hidden">
 			{/* Category header with icon */}
 			<button
+				type="button"
 				onClick={() => {
 					setIsOpen(!isOpen);
 					router.push(`/tools#${categoryKey}`);
@@ -286,6 +287,7 @@ function UsageCounter() {
 				{/* Upgrade link for free users */}
 				{planId === "free" && (
 					<button
+						type="button"
 						onClick={redirectToUpgrade}
 						className="w-full text-[10px] text-center text-primary hover:underline underline-offset-2"
 					>
