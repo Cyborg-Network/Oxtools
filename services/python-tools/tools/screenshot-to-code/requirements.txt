@@ -1,0 +1,8 @@
+# Requirements for: Screenshot to Code
+openai>=1.68.2,<2.0.0
+Pillow==10.4.0
+playwright==1.44.0
+scikit-image==0.24.0   # SSIM scoring
+numpy==1.26.4  
+pytesseract==0.3.10
+opencv-python-headless==4.9.0.80

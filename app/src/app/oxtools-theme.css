@@ -1,0 +1,175 @@
+/*
+ * Oxtools Theme - Matching docs_site & Oxlo.ai Design System
+ * ============================================================
+ * Fonts: Unbounded (headings), Inter (body), JetBrains Mono (code)
+ * Primary: #03F7B5 (teal)
+ * Background: #0B0D11 (dark navy)
+ * Card: #161B22
+ * Border: #30363D
+ */
+
+/* ===== LIGHT THEME ===== */
+:root {
+	--primary: oklch(0.55 0.18 168);
+	--primary-foreground: #ffffff;
+
+	--background: #ffffff;
+	--foreground: #0b0d11;
+
+	--card: #f6f8fa;
+	--card-foreground: #0b0d11;
+
+	--popover: #ffffff;
+	--popover-foreground: #0b0d11;
+
+	--muted: #f0f2f5;
+	--muted-foreground: #6e7781;
+
+	--secondary: #f0f2f5;
+	--secondary-foreground: #0b0d11;
+
+	--accent: rgba(3, 200, 150, 0.1);
+	--accent-foreground: #0b0d11;
+
+	--border: #d0d7de;
+	--input: #d0d7de;
+	--ring: #03c896;
+
+	--sidebar: #f6f8fa;
+	--sidebar-foreground: #0b0d11;
+	--sidebar-border: #d0d7de;
+	--sidebar-accent: transparent;
+	--sidebar-accent-foreground: #0b0d11;
+	--sidebar-primary: #03c896;
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-ring: #03c896;
+
+	--destructive: #dc2626;
+	--destructive-foreground: #ffffff;
+
+	--chart-1: #03c896;
+	--chart-2: #02b087;
+	--chart-3: #10b981;
+	--chart-4: #3b82f6;
+	--chart-5: #8b5cf6;
+}
+
+/* ===== DARK THEME - Matching docs_site ===== */
+.dark {
+	--primary: oklch(0.82 0.18 168);
+	--primary-foreground: oklch(0.15 0.02 168);
+
+	--background: #0b0d11;
+	--foreground: #e6edf3;
+
+	--card: #161b22;
+	--card-foreground: #e6edf3;
+
+	--popover: #161b22;
+	--popover-foreground: #e6edf3;
+
+	--muted: #30363d;
+	--muted-foreground: #8b949e;
+
+	--secondary: #30363d;
+	--secondary-foreground: #e6edf3;
+
+	--accent: rgba(3, 247, 181, 0.1);
+	--accent-foreground: #03f7b5;
+
+	--border: #30363d;
+	--input: #30363d;
+	--ring: #03f7b5;
+
+	--sidebar: #0b0d11;
+	--sidebar-foreground: #e6edf3;
+	--sidebar-border: #30363d;
+	--sidebar-accent: transparent;
+	--sidebar-accent-foreground: #03f7b5;
+	--sidebar-primary: #03f7b5;
+	--sidebar-primary-foreground: #0b0d11;
+	--sidebar-ring: #03f7b5;
+
+	--destructive: #ef4444;
+	--destructive-foreground: #fafafa;
+
+	--chart-1: #03f7b5;
+	--chart-2: #02d69e;
+	--chart-3: #10b981;
+	--chart-4: #3b82f6;
+	--chart-5: #8b5cf6;
+}
+
+/* ===== TYPOGRAPHY - Matching docs_site ===== */
+body {
+	font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings use Unbounded - matches docs_site */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-family: var(--font-unbounded), "Unbounded", sans-serif;
+	font-weight: 600;
+}
+
+/* Code uses JetBrains Mono */
+code,
+pre,
+.font-mono {
+	font-family: var(--font-mono), "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* ===== SCROLLBAR - Matching docs_site ===== */
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: #30363d;
+	border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: #8b949e;
+}
+
+/* Thin sidebar scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+	width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+	background: #30363d;
+	border-radius: 2px;
+}
+
+/* ===== GLOBAL ENHANCEMENTS ===== */
+
+/* Smooth transitions on interactive elements */
+button,
+a,
+[role="button"] {
+	transition:
+		color 0.15s ease,
+		background-color 0.15s ease,
+		border-color 0.15s ease;
+}
+
+/* Better focus rings */
+:focus-visible {
+	outline: 2px solid #03f7b5;
+	outline-offset: 2px;
+}
+
+/* Selection color */
+::selection {
+	background: rgba(3, 247, 181, 0.3);
+	color: #e6edf3;
+}

@@ -1,131 +1,121 @@
 # Contributing to Oxtools
 
-Thanks for your interest in contributing. This document explains the requirements every submission must meet and the process for getting your PR merged.
+Thanks for your interest in contributing! This document explains how to add tools, the requirements every submission must meet, and the PR process.
 
-Read this in full before you open a Pull Request. Submissions that are missing required files will be closed with a checklist of what needs to be fixed.
+Read this in full before you open a Pull Request.
 
 ---
 
-## 1. Folder structure
+## 1. Repository Structure
 
-Oxtools is a monorepo. Every project lives in its own isolated directory under `projects/`.
+Oxtools is a monorepo with two main components:
 
 ```
 Oxtools/
-└── projects/
-    └── your-project-name/
-        ├── src/                  # Your application source code
-        ├── Dockerfile            # Required
-        ├── docker-compose.yml    # Required
-        ├── oxlo-manifest.json    # Required
-        ├── .env.example          # Required
-        └── README.md             # Required
+├── app/                          # Next.js 16 dashboard (frontend)
+│   └── src/lib/tools/            # Tool definitions live here
+├── services/
+│   └── python-tools/             # Unified Python Tool Runner (Tier 2)
+│       └── tools/                # Python tool implementations live here
+├── docs/                         # Contributing guides
+└── CONTRIBUTING.md               # This file
 ```
 
-**Rules:**
-- One project per directory — do not nest multiple tools in the same folder.
-- Name your directory after what the tool does, not after yourself (e.g., `pdf-summarizer`, not `johns-cool-bot`).
-- Do not place any project files in the root of the repository.
+**There are two types of tools:**
 
-The fastest way to get started is to copy `projects/template-project/` and rename it.
+| Type | Where it lives | When to use |
+|---|---|---|
+| **Tier 1 (Frontend)** | `app/src/lib/tools/my-tool.ts` | Pure LLM prompt - no custom backend needed |
+| **Tier 2 (Python)** | `services/python-tools/tools/my-tool/` | Needs custom logic, libraries, or multi-step agents |
 
 ---
 
-## 2. Required files
+## 2. Choosing the right tier
 
-Every submission must include the following five files. PRs missing any of them will not be reviewed.
+**Use Tier 1** if your tool:
+- Sends a prompt to an LLM and returns the response
+- Doesn't need special libraries (Playwright, BeautifulSoup, etc.)
+- Can be defined entirely as system + user prompt engineering
 
-### `Dockerfile`
-
-Your project must be containerized. The `Dockerfile` must produce a working image — maintainers will run `docker build` as part of the review.
-
-Use `projects/template-project/Dockerfile` as your starting point. Comment your `Dockerfile` to explain any non-obvious setup steps.
-
-### `docker-compose.yml`
-
-Include a `docker-compose.yml` so reviewers can run your tool with a single command (`docker compose up`). Mount the `.env` file and map the appropriate port.
-
-### `oxlo-manifest.json`
-
-This file holds metadata about your tool. Copy the schema from `projects/template-project/oxlo-manifest.json` and fill it in:
-
-```json
-{
-  "name": "your-tool-name",
-  "description": "One sentence describing what this tool does.",
-  "author": "your-github-handle",
-  "tech_stack": ["python", "fastapi"],
-  "port_number": 8000,
-  "oxlo_api_used": true
-}
-```
-
-All fields are required. `tech_stack` is an array — list the language and any major frameworks.
-
-### `.env.example`
-
-List every environment variable your project needs, with empty values. This file is committed to the repo so other developers know what to configure.
-
-```bash
-OXLO_API_KEY=
-PORT=8000
-```
-
-Your actual `.env` file must never be committed. Verify that `.env` is in your project's `.gitignore` (or the root `.gitignore` already covers it).
-
-### `README.md`
-
-Write a project-level `README.md` inside your project directory. It must cover:
-
-1. **What it does** — a plain 2–3 sentence description of the tool and how it uses the Oxlo API.
-2. **Prerequisites** — any software a developer needs before running the tool locally.
-3. **Local setup** — exact, copy-pasteable commands (clone, configure `.env`, run with Docker).
-4. **Demo** — a link to a Loom or YouTube recording of the tool working.
+**Use Tier 2** if your tool:
+- Needs Python libraries (computer vision, web scraping, etc.)
+- Runs multi-step agent workflows (LangGraph, etc.)
+- Requires file processing beyond text (images, PDFs, etc.)
 
 ---
 
-## 3. Security rules
+## 3. Step-by-step guides
 
-**No hardcoded API keys or secrets — ever.**
+Detailed guides with code examples:
+
+- **Tier 1 (Frontend):** [`docs/adding-a-frontend-tool.md`](./docs/adding-a-frontend-tool.md)
+- **Tier 2 (Python):** [`docs/adding-a-python-tool.md`](./docs/adding-a-python-tool.md)
+
+---
+
+## 4. Naming conventions
+
+- **Tool ID:** kebab-case, descriptive (`pdf-summarizer`, not `johns-cool-bot`)
+- **File names:** Match the tool ID (`pdf-summarizer.ts` or `pdf-summarizer/tool.py`)
+- **Branch names:** `feat/tool-name` (e.g., `feat/pdf-summarizer`)
+
+---
+
+## 5. Security rules
+
+**No hardcoded API keys or secrets - ever.**
 
 - Use environment variables for all credentials.
-- Check your diff before pushing. Tools like `git diff --stat` and `git grep -i "api_key"` can catch accidental leaks.
-- If you realize you have committed a secret, rotate the key immediately and rewrite the Git history before opening a PR.
+- Check your diff before pushing: `git diff --stat` and `git grep -i "api_key"`.
+- If you accidentally commit a secret, rotate the key immediately and rewrite the Git history.
+- Add any new required env vars to `.env.example`.
 
 Submissions with hardcoded secrets will be closed without review.
 
 ---
 
-## 4. Submission process
+## 6. Submission process
 
-We use a standard Fork & Pull Request workflow. Direct pushes to `main` are not permitted.
+We use a standard Fork & Pull Request workflow.
 
 ```
 1. Fork the Cyborg-Network/Oxtools repository on GitHub.
 2. Clone your fork locally.
 3. Create a feature branch:
-      git checkout -b feat/your-project-name
-4. Build your project inside projects/your-project-name/.
-5. Commit with a clear message:
+      git checkout -b feat/your-tool-name
+4. Add your tool following the appropriate guide (Tier 1 or Tier 2).
+5. Test locally - make sure it builds and runs.
+6. Commit with a clear message:
       git commit -m "feat: add pdf-summarizer tool"
-6. Push to your fork:
-      git push origin feat/your-project-name
-7. Open a Pull Request against main on Cyborg-Network/Oxtools.
+7. Push to your fork:
+      git push origin feat/your-tool-name
+8. Open a Pull Request against main on Cyborg-Network/Oxtools.
 ```
 
 ---
 
-## 5. Review process
+## 7. PR checklist
 
-When you open a PR, GitHub will automatically load the Pull Request template. Fill it out completely — including a demo link.
+Before opening your PR, verify:
+
+- [ ] Tool works locally (`npm run dev` for Tier 1, `docker compose up` for Tier 2)
+- [ ] Tool ID matches across frontend definition and backend manifest (Tier 2)
+- [ ] Tool is registered in `app/src/lib/tools/registry.ts`
+- [ ] No hardcoded API keys or secrets in the diff
+- [ ] `.env.example` updated if new env vars are needed
+- [ ] Tool has a clear name, description, and appropriate category
+
+---
+
+## 8. Review process
 
 A maintainer will review your submission and check:
 
-1. **Does it build?** — `docker build` and `docker compose up` must succeed.
-2. **Does the Oxlo API integration work?** — The tool must demonstrably call the API.
-3. **Are there any secrets in the diff?** — Automated and manual checks both run.
-4. **Is the README accurate?** — The setup instructions will be followed exactly.
+1. **Does it work?** - The tool must produce correct results.
+2. **Is it well-prompted?** - System prompts should be specific and well-structured.
+3. **Are there secrets in the diff?** - Automated and manual checks both run.
+4. **Does it fit?** - The tool should be genuinely useful to developers.
 
-If changes are needed, the reviewer will leave comments on the PR. Push fixes to the same branch and the PR will update automatically.
+If changes are needed, the reviewer will leave comments. Push fixes to the same branch.
 
-Once the review is clear, your PR will be merged and your tool becomes part of the Oxtools ecosystem.
+Once approved, your PR will be merged and your tool goes live in Oxtools!

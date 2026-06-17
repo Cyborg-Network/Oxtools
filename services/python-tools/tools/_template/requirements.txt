@@ -1,0 +1,7 @@
+# Add your pip dependencies here, one per line.
+# These are auto-installed when the Docker container builds.
+#
+# Example:
+# openai==1.30.0
+# beautifulsoup4==4.12.0
+# numpy==1.26.0

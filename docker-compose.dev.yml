@@ -1,0 +1,34 @@
+# Oxtools Local Development
+# ==========================
+# ONE container runs ALL Python tools via the unified runner.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Contributors: Just add your tool to services/python-tools/tools/
+# No Docker knowledge needed. No ports to manage.
+
+services:
+  # --- Unified Python Tool Runner ---
+  # Loads ALL Python tools from services/python-tools/tools/
+  # Each tool is accessible at: /api/tools/{tool-id}
+  python-tools:
+    build: ./services/python-tools
+    ports:
+      - "9080:9080"     # ONE port for ALL Python tools
+    environment:
+      - OXLO_API_KEY=${OXLO_API_KEY}
+      - OXLO_BASE_URL=https://api.oxlo.ai/v1
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    volumes:
+      # Mount tools dir for live reload during development
+      - ./services/python-tools/tools:/app/tools
+    restart: unless-stopped
+
+  # Legacy standalone services (will be migrated to unified runner)
+  # screenshot-to-code:
+  #   build: ./services/screenshot-to-code
+  #   ports:
+  #     - "9081:8000"
+  #   environment:
+  #     - OXLO_API_KEY=${OXLO_API_KEY}
