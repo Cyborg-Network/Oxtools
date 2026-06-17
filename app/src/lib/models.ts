@@ -10,6 +10,8 @@ export const AVAILABLE_MODELS = [
 	{ id: "mistral-7b", name: "Mistral 7B", tier: "Free", category: "general" },
 ] as const;
 
+export const DEFAULT_IMAGE_MODEL = "flux.1-schnell";
+
 export type ModelId = (typeof AVAILABLE_MODELS)[number]["id"];
 
 export function getDefaultModel(category?: "general" | "coding" | "reasoning"): string {

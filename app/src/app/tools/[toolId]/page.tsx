@@ -148,8 +148,19 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		for (const field of tool.requiredFields) {
 			if (!fields[field]?.trim()) return;
 		}
-		execute({ ...fields, model });
-		// Track usage for THIS tool
+
+		// Always Flux ai_image + enterpriseArchitecture — no user selection needed
+		const resolvedMode = "ai_image";
+
+		console.info("[mode-resolved]", { requestedModel: model, resolvedMode });
+
+		execute({
+			...fields,
+			model,
+			diagramType:     "enterpriseArchitecture",
+			generationMode:  resolvedMode,
+			generation_mode: resolvedMode,
+		});
 		trackExecution(tool.id);
 	};
 

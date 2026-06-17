@@ -1,30 +1,51 @@
 ﻿import type { ToolDefinition } from "@/types";
 
+const ENTERPRISE_ARCHITECTURE_PROMPT = `You are an expert enterprise architecture, workflow, and system topology designer.
+
+Return exactly one JSON object and no markdown fences.
+
+The JSON must follow this shape:
+{
+	"type": "enterpriseArchitecture",
+	"title": "...",
+	"layout_type": "pipeline | layered | hub_spoke | microservices_grid | system_context",
+	"node_count": 0,
+	"edge_count": 0,
+	"fidelity_score": 0,
+	"theme": "healthcare | cloud | fintech | ai | enterprise | cyber_security",
+	"variant": "poster | infographic | system diagram | cloud architecture | workflow | technical architecture",
+	"components": [{ "name": "...", "type": "...", "role": "...", "group": "..." }],
+	"nodes": [{ "id": "...", "label": "...", "type": "...", "role": "...", "icon": "...", "importance": 1, "central": false }],
+	"edges": [{ "from": "node-id", "to": "node-id", "label": "...", "style": "solid | dashed | curved | orthogonal" }],
+	"connections": [{ "from": "node-id", "to": "node-id", "label": "..." }],
+	"groups": [{ "id": "...", "label": "...", "nodeIds": ["node-id"] }]
+}
+
+Topology Rules:
+- workflow/process/sequence => pipeline
+- microservices/distributed/service mesh => microservices_grid
+- agent/orchestrator/coordinator/hub => hub_spoke
+- cloud/platform/frontend/backend/layers => layered
+- context/external systems/partners => system_context
+
+Do not output Mermaid. Do not output prose outside the JSON object.`;
+
 export const architectureDiagram: ToolDefinition = {
 	id: "architecture-diagram",
 	name: "Architecture Diagram",
-	description: "Generate Mermaid diagrams from text descriptions",
+	description: "AI architecture diagram generator with Flux.1 Schnell image mode and SVG fallback",
 	category: "design",
 	icon: "GitFork",
 	status: "active",
+	tier: "tier1",
+	timeoutMs: 60_000,
 
 	defaultModel: "deepseek-r1-0528",
 	requiredFields: ["description"],
-	buildSystemPrompt: ({ diagramType }) =>
-		`You are an expert system architect. Given a system description, generate a Mermaid diagram that visualizes the architecture.
 
-RULES:
-- Output ONLY a single fenced code block with language "mermaid" containing valid Mermaid syntax
-- Preferred diagram type: ${diagramType || "flowchart TD"}
-- Use clear, descriptive labels for all nodes
-- Group related components with subgraph blocks where appropriate
-- Use proper Mermaid arrow types: --> for flow, -.-> for async, ==> for strong dependency
-- After the mermaid block, provide a brief explanation of the architecture in markdown
+	buildSystemPrompt: () => ENTERPRISE_ARCHITECTURE_PROMPT,
 
-IMPORTANT: The mermaid code block MUST be valid Mermaid syntax. Test mentally before outputting.
-Do NOT use parentheses, brackets, or special characters inside node labels unless properly quoted.`,
-	buildUserPrompt: ({ description }) =>
-		`Generate a Mermaid architecture diagram for the following system:\n\n${description}`,
+	buildUserPrompt: ({ description }) => description,
 
 	inputs: [
 		{
@@ -34,18 +55,6 @@ Do NOT use parentheses, brackets, or special characters inside node labels unles
 			placeholder:
 				"A microservices e-commerce platform with user service, product catalog, shopping cart, payment processing via Stripe, and a notification service that sends emails and push notifications...",
 			rows: 6,
-		},
-		{
-			key: "diagramType",
-			label: "Diagram Type",
-			type: "select",
-			options: [
-				{ value: "flowchart TD", label: "Flowchart (Top-Down)" },
-				{ value: "flowchart LR", label: "Flowchart (Left-Right)" },
-				{ value: "sequenceDiagram", label: "Sequence Diagram" },
-				{ value: "classDiagram", label: "Class Diagram" },
-				{ value: "erDiagram", label: "ER Diagram" },
-			],
 		},
 	],
 };

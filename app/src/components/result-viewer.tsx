@@ -13,10 +13,12 @@ import {
 	Timer,
 } from "lucide-react";
 import mermaid from "mermaid";
+import NextImage from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ColorPaletteViewer } from "./color-palette-viewer";
+import EnterpriseArchitectureRenderer from "./enterprise-architecture-renderer";
 
 mermaid.initialize({
 	startOnLoad: false,
@@ -222,8 +224,31 @@ export function ResultViewer({
 	onOpenSettings,
 }: ResultViewerProps) {
 	const [copiedAll, setCopiedAll] = useState(false);
+	const [copiedSvg, setCopiedSvg] = useState(false);
+	const [copiedImage, setCopiedImage] = useState(false);
 	const [copiedExtracted, setCopiedExtracted] = useState(false);
 	const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+
+	const downloadGeneratedImage = async (imageSrc: string, title: string) => {
+		if (!imageSrc) return;
+		const safeName = (title || "architecture-diagram")
+			.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+		const fileName = `${safeName || "architecture-diagram"}.png`;
+		if (imageSrc.startsWith("data:")) {
+			const res = await fetch(imageSrc);
+			const blob = await res.blob();
+			const blobUrl = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = blobUrl; link.download = fileName; link.click();
+			URL.revokeObjectURL(blobUrl);
+		} else {
+			const link = document.createElement("a");
+			link.href = imageSrc; link.download = fileName;
+			link.target = "_blank"; link.rel = "noopener noreferrer"; link.click();
+		}
+		setCopiedImage(true);
+		setTimeout(() => setCopiedImage(false), 2000);
+	};
 
 	type StructuredResult = {
 		code?: string;
@@ -231,6 +256,30 @@ export function ResultViewer({
 		roles?: Record<string, string>;
 		image?: string;
 		extractedColors?: string[];
+		error?: string;
+		details?: string[];
+		type?: string;
+		title?: string;
+		description?: string;
+		layout_type?: string;
+		layoutType?: string;
+		theme?: string;
+		variant?: string;
+		output_type?: string;
+		outputType?: string;
+		generation_mode?: string;
+		generationMode?: string;
+		image_model?: string;
+		imageModel?: string;
+		image_prompt?: string;
+		svg?: string;
+		components?: Array<Record<string, unknown>>;
+		tiers?: Array<Record<string, unknown>>;
+		nodes?: Array<Record<string, unknown>>;
+		edges?: Array<Record<string, unknown>>;
+		groups?: Array<Record<string, unknown>>;
+		stages?: Array<Record<string, unknown>>;
+		connections?: Array<Record<string, unknown>>;
 		[key: string]: unknown;
 	};
 
@@ -288,6 +337,11 @@ export function ResultViewer({
 	let pipelineLogs = "";
 	let isReportStarted = false;
 	let extractedColorsPreview: string[] = [];
+	let enterpriseData: StructuredResult | null = null;
+	let enterpriseError: StructuredResult | null = null;
+	let enterpriseImage = "";
+	let enterpriseSvgTitle = "Architecture Diagram";
+	let enterpriseGenerationMode = "";
 
 	let outputContent = result;
 
@@ -404,38 +458,43 @@ export function ResultViewer({
 				trimmed.startsWith("{") && trimmed.endsWith("}") ? trimmed : extractBalancedJson(trimmed);
 			if (jsonCandidate) {
 				const parsed = JSON.parse(jsonCandidate) as StructuredResult;
-				// Check for color palette JSON
-				if (
-					parsed.palette &&
-					typeof parsed.palette === "object" &&
-					parsed.roles &&
-					typeof parsed.roles === "object"
-				) {
+				const outputType     = String(parsed.output_type || parsed.outputType || "").toLowerCase();
+				const generationMode = String(parsed.generation_mode || parsed.generationMode || "").toLowerCase();
+				const imageModel     = String(parsed.image_model || parsed.imageModel || "").toLowerCase();
+				const aiImageMode    = generationMode === "ai_image" || outputType === "image" || imageModel.includes("flux");
+				const resolvedMode   = aiImageMode ? "ai_image" : (generationMode || "svg_renderer");
+
+				console.info("[generation-mode]", { mode: resolvedMode, model: imageModel || "llm", aiImageMode });
+
+				if (parsed.palette && typeof parsed.palette === "object" && parsed.roles && typeof parsed.roles === "object") {
 					parsedJson = parsed;
-					displayMarkdown = ""; // Don't show markdown for palettes
+					displayMarkdown = "";
+				} else if (aiImageMode) {
+					parsedJson = parsed;
+					if (typeof parsed.image === "string" && parsed.image.trim().length > 0) {
+						enterpriseImage = parsed.image.trim();
+						enterpriseSvgTitle = parsed.title || enterpriseSvgTitle;
+						enterpriseGenerationMode = resolvedMode;
+						console.info("[image-generation]", { model: imageModel || "flux.1-schnell", mode: resolvedMode });
+					}
+					displayMarkdown = "";
 				} else if (typeof parsed.code === "string") {
 					parsedJson = parsed;
 					displayMarkdown = `\`\`\`html\n${parsed.code}\n\`\`\``;
 				}
 			}
 		} catch (_e) {
-			// Ignore parsing errors - fall back to markdown rendering
 			displayMarkdown = outputContent;
 		}
 
-		// Fallback: Check if the result embeds a standalone HTML block in markdown
 		if (!parsedJson) {
 			const htmlBlockRegex = /```(?:html)?\s*(<!DOCTYPE html>[\s\S]*?<html[\s\S]*?)```/i;
 			const match = outputContent.trim().match(htmlBlockRegex);
 			if (match?.[1]) {
 				parsedJson = { code: match[1] };
-			} else if (
-				outputContent.trim().startsWith("<!DOCTYPE html>") ||
-				outputContent.trim().startsWith("<html")
-			) {
+			} else if (outputContent.trim().startsWith("<!DOCTYPE html>") || outputContent.trim().startsWith("<html")) {
 				parsedJson = { code: outputContent.trim() };
 			} else {
-				// Not HTML or JSON, treat as markdown
 				displayMarkdown = outputContent;
 			}
 		}
@@ -628,8 +687,40 @@ export function ResultViewer({
 				return null;
 			})()}
 
+			{/* Flux AI Image result */}
+			{enterpriseImage && (
+				<Card className="overflow-hidden border-border/40 bg-white text-zinc-950 shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
+					<div className="flex items-center justify-between border-b border-zinc-200/80 px-5 py-4">
+						<div>
+							<h4 className="text-lg font-semibold tracking-tight text-zinc-950">{enterpriseSvgTitle}</h4>
+							<p className="text-sm text-zinc-500">Flux.1 Schnell generated architecture image</p>
+						</div>
+						<Button variant="outline" size="sm" onClick={() => downloadGeneratedImage(enterpriseImage, enterpriseSvgTitle)} className="h-8 text-xs">
+							{copiedImage ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
+							Download PNG
+						</Button>
+					</div>
+					<CardContent className="p-4">
+						<div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg border border-zinc-200 bg-white">
+							<NextImage src={enterpriseImage} alt={enterpriseSvgTitle} fill unoptimized className="object-contain" />
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{enterpriseError && (
+				<Card className="border-rose-200 bg-rose-50/80 text-rose-800">
+					<CardContent className="p-6">
+						<div className="text-sm font-semibold">Architecture error</div>
+						<div className="mt-2 text-sm text-rose-700">
+							{enterpriseError.error || "Architecture JSON could not be parsed."}
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
 			{/* Final Report Viewer - Shows when palette/roles DON'T exist */}
-			{(isReportStarted || displayMarkdown) && !(parsedJson?.palette && parsedJson?.roles) && (
+			{(isReportStarted || displayMarkdown) && !(parsedJson?.palette && parsedJson?.roles) && !enterpriseImage && (
 				<Card className="overflow-hidden relative">
 					<div
 						className="absolute top-3 right-3 flex items-center gap-2 z-10"
