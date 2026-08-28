@@ -60,6 +60,7 @@ function MermaidViewer({ chart }: { chart: string }) {
 		<div
 			ref={containerRef}
 			className="mermaid-wrapper my-6 flex items-center justify-center overflow-auto rounded-lg border border-border bg-zinc-950 dark:bg-zinc-900 p-6"
+			// biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid renders SVG markup.
 			dangerouslySetInnerHTML={{ __html: svg }}
 		/>
 	);
@@ -73,6 +74,23 @@ interface ResultViewerProps {
 	error?: ToolError | string | null;
 	streaming?: boolean;
 	onOpenSettings?: () => void;
+}
+
+function stripThinkBlocks(text: string) {
+	// Remove well-formed <think> blocks first.
+	let out = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+
+	// If an unclosed <think> remains, trim from the first real report heading.
+	if (/<think/i.test(out)) {
+		const headingIdx = out.search(/\n##\s/);
+		if (headingIdx !== -1) {
+			out = out.slice(headingIdx).trim();
+		} else {
+			out = out.replace(/<think[\s\S]*/i, "").trim();
+		}
+	}
+
+	return out;
 }
 
 const ERROR_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -216,6 +234,13 @@ export function ResultViewer({
 }: ResultViewerProps) {
 	const [copiedAll, setCopiedAll] = useState(false);
 	const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+	const [logsExpanded, setLogsExpanded] = useState(false);
+
+	useEffect(() => {
+		if (result.includes("---REPORT_START---") && !isLoading) {
+			setLogsExpanded(false);
+		}
+	}, [isLoading, result]);
 
 	const handleCopyAll = useCallback(async () => {
 		await navigator.clipboard.writeText(result);
@@ -272,8 +297,8 @@ export function ResultViewer({
 		);
 	}
 
-	let parsedJson: { code?: string; [key: string]: any } | null = null;
-	let displayMarkdown = result;
+	let parsedJson: { code?: string; [key: string]: unknown } | null = null;
+	let displayMarkdown = "";
 	let pipelineLogs = "";
 	let isReportStarted = false;
 
@@ -281,12 +306,14 @@ export function ResultViewer({
 		if (result.includes("---REPORT_START---")) {
 			const parts = result.split("---REPORT_START---");
 			pipelineLogs = parts[0].trim();
-			displayMarkdown = parts[1] || "";
+			displayMarkdown = stripThinkBlocks(parts[1] || "");
 			isReportStarted = true;
 		} else if (streaming && isLoading) {
 			// If we haven't hit the report marker yet, everything is logs.
 			pipelineLogs = result.trim();
 			displayMarkdown = "";
+		} else {
+			displayMarkdown = stripThinkBlocks(result || "");
 		}
 	}
 
@@ -327,7 +354,11 @@ export function ResultViewer({
 			{pipelineLogs && (
 				<Card className="border-primary/20 bg-primary/[0.02] overflow-hidden">
 					<CardContent className="p-0">
-						<div className="flex items-center gap-3 border-b border-border/40 bg-muted/30 px-4 py-3">
+						<button
+							type="button"
+							onClick={() => setLogsExpanded((value) => !value)}
+							className="flex w-full items-center gap-3 border-b border-border/40 bg-muted/30 px-4 py-3 text-left"
+						>
 							<div className="relative">
 								{isLoading && !isReportStarted ? (
 									<Spinner className="h-4 w-4 text-primary" />
@@ -338,47 +369,55 @@ export function ResultViewer({
 									<Sparkles className="absolute -top-1 -right-1 h-2 w-2 animate-pulse text-primary" />
 								)}
 							</div>
-							<span className="text-sm font-medium text-muted-foreground">
+							<span className="flex-1 text-sm font-medium text-muted-foreground">
 								{isLoading && !isReportStarted ? "Agent Pipeline Running..." : "Pipeline Complete"}
 							</span>
-						</div>
-						<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
-							{pipelineLogs.split("\n").map((line, i) => {
-								if (!line.trim() || line === ".") return null;
-								let textColor = "text-zinc-400";
-								if (line.startsWith("[")) {
-									textColor = "text-primary font-semibold";
-								} else if (line.startsWith(">")) {
-									textColor = "text-zinc-300 ml-4 border-l-2 border-primary/30 pl-2";
-								} else if (
-									line.toLowerCase().includes("error") ||
-									line.toLowerCase().includes("failed")
-								) {
-									textColor = "text-red-400";
-								}
-								return (
-									<div key={i} className={`py-0.5 ${textColor}`}>
-										{line}
+							<span className="text-xs text-muted-foreground">
+								{isLoading && !isReportStarted ? "▼ visible" : logsExpanded ? "▲ hide" : "▼ show"}
+							</span>
+						</button>
+						{(isLoading && !isReportStarted) || logsExpanded ? (
+							<div className="max-h-[300px] overflow-y-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed text-zinc-300 dark:bg-zinc-950/50">
+								{pipelineLogs.split("\n").map((line) => {
+									if (!line.trim() || line === ".") return null;
+									let textColor = "text-zinc-400";
+									if (line.startsWith("[")) {
+										textColor = "text-primary font-semibold";
+									} else if (line.startsWith(">")) {
+										textColor = "text-zinc-300 ml-4 border-l-2 border-primary/30 pl-2";
+									} else if (
+										line.toLowerCase().includes("error") ||
+										line.toLowerCase().includes("failed")
+									) {
+										textColor = "text-red-400";
+									}
+									return (
+										<div
+											key={line ? `log-${line.slice(0, 20)}` : "empty-log"}
+											className={`py-0.5 ${textColor}`}
+										>
+											{line}
+										</div>
+									);
+								})}
+								{isLoading && !isReportStarted && (
+									<div className="mt-2 flex items-center gap-1.5 text-primary/70">
+										<span
+											className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+											style={{ animationDelay: "0ms" }}
+										/>
+										<span
+											className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+											style={{ animationDelay: "150ms" }}
+										/>
+										<span
+											className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
+											style={{ animationDelay: "300ms" }}
+										/>
 									</div>
-								);
-							})}
-							{isLoading && !isReportStarted && (
-								<div className="mt-2 flex items-center gap-1.5 text-primary/70">
-									<span
-										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
-										style={{ animationDelay: "0ms" }}
-									/>
-									<span
-										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
-										style={{ animationDelay: "150ms" }}
-									/>
-									<span
-										className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/70"
-										style={{ animationDelay: "300ms" }}
-									/>
-								</div>
-							)}
-						</div>
+								)}
+							</div>
+						) : null}
 					</CardContent>
 				</Card>
 			)}
@@ -417,6 +456,7 @@ export function ResultViewer({
 					{hasHtmlCode && (
 						<div className="flex border-b border-border/50 px-4 pt-3 bg-muted/20">
 							<button
+								type="button"
 								onClick={() => setActiveTab("preview")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "preview"
@@ -427,6 +467,7 @@ export function ResultViewer({
 								Preview
 							</button>
 							<button
+								type="button"
 								onClick={() => setActiveTab("code")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "code"

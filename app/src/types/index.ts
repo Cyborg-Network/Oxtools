@@ -5,7 +5,7 @@ export type ToolStatus = "active" | "coming-soon";
 export interface InputFieldConfig {
 	key: string;
 	label: string;
-	type: "code" | "textarea" | "select" | "text" | "image" | "files";
+	type: "code" | "textarea" | "select" | "text" | "image" | "files" | "pdf-drop";
 	placeholder?: string;
 	rows?: number;
 	options?: { value: string; label: string }[];
