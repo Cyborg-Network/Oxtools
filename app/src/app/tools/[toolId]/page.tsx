@@ -1,9 +1,9 @@
 "use client";
 
 import { Button, Label, Textarea } from "@ansospace/ui";
-import { ArrowUpRight, Crown, Lock, Play, X } from "lucide-react";
+import { ArrowUpRight, Crown, Lock, Play, Plus, X } from "lucide-react";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ResultViewer } from "@/components/result-viewer";
 import { ToolLayout } from "@/components/tool-layout";
@@ -44,6 +44,9 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		return initial;
 	});
 
+	// Length selector modal state
+	const [showLengthModal, setShowLengthModal] = useState(false);
+
 	// Tier2 tools MUST bypass Next.js proxy buffering to prevent silent timeouts on long executions
 	const runnerUrl = process.env.NEXT_PUBLIC_TOOL_RUNNER_URL || "http://localhost:9080";
 	const apiBase = tool.tier === "tier2" ? `${runnerUrl}/api/tools` : "/api/tools";
@@ -83,23 +86,25 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 		}
 	}, [mounted, toolUsage.limitReached]);
 
+	// Check if all required fields are filled
+	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
+
 	const handleExecute = () => {
-		// Check per-tool usage limit
 		if (!canExecute(tool.id)) {
 			setShowUpgradeDialog(true);
 			return;
 		}
-		// Check required fields
 		for (const field of tool.requiredFields) {
 			if (!fields[field]?.trim()) return;
 		}
-		execute({ ...fields, model });
-		// Track usage for THIS tool
-		trackExecution(tool.id);
-	};
 
-	// Check if all required fields are filled
-	const isReady = tool.requiredFields.every((field) => fields[field]?.trim());
+		if (tool.requireLengthSelection) {
+			setShowLengthModal(true);
+		} else {
+			execute({ ...fields, model });
+			trackExecution(tool.id);
+		}
+	};
 
 	return (
 		<>
@@ -117,6 +122,7 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 							config={input}
 							value={fields[input.key] || ""}
 							onChange={(value) => setField(input.key, value)}
+							onFieldChange={(key, value) => setField(key, value)}
 						/>
 					))}
 
@@ -202,10 +208,65 @@ function ToolPageContent({ toolId }: { toolId: string }) {
 					{/* Results */}
 					<div className="space-y-2">
 						<Label>Result</Label>
-						<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						{tool.ResultComponent && result ? (
+							<tool.ResultComponent result={result} isLoading={isLoading} error={error} />
+						) : (
+							<ResultViewer result={result} isLoading={isLoading} error={error} streaming />
+						)}
 					</div>
 				</div>
 			</ToolLayout>
+
+			{/* Length selector modal (for tools that require it) */}
+			{tool.requireLengthSelection && showLengthModal && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+					<div className="relative mx-4 w-full max-w-sm rounded-2xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+						<button
+							type="button"
+							onClick={() => setShowLengthModal(false)}
+							className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+						>
+							<X className="h-4 w-4" />
+						</button>
+
+						<div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+							<Play className="h-6 w-6 text-primary" />
+						</div>
+
+						<h3 className="text-center text-lg font-semibold">Caption Length</h3>
+						<p className="mt-1 text-center text-sm text-muted-foreground">
+							How long do you want your captions to be?
+						</p>
+
+						<div className="mt-5 flex gap-3">
+							<Button
+								variant="outline"
+								className="flex-1 h-auto flex-col gap-1 py-4"
+								onClick={() => {
+									setShowLengthModal(false);
+									execute({ ...fields, model, length_type: "short" });
+									trackExecution(tool.id);
+								}}
+							>
+								<span className="text-base font-semibold">Short</span>
+								<span className="text-xs text-muted-foreground">Quick & punchy</span>
+							</Button>
+							<Button
+								variant="outline"
+								className="flex-1 h-auto flex-col gap-1 py-4"
+								onClick={() => {
+									setShowLengthModal(false);
+									execute({ ...fields, model, length_type: "long" });
+									trackExecution(tool.id);
+								}}
+							>
+								<span className="text-base font-semibold">Long</span>
+								<span className="text-xs text-muted-foreground">Detailed & descriptive</span>
+							</Button>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* ─── Upgrade Dialog Popup ──────────────────────────── */}
 			{showUpgradeDialog && (
@@ -297,11 +358,18 @@ function InputField({
 	config,
 	value,
 	onChange,
+	onFieldChange,
 }: {
 	config: InputFieldConfig;
 	value: string;
 	onChange: (value: string) => void;
+	onFieldChange?: (key: string, value: string) => void;
 }) {
+	const textareaFileRef = useRef<HTMLInputElement>(null);
+	const [textareaShowPreview, setTextareaShowPreview] = useState(false);
+	const [textareaSpinning, setTextareaSpinning] = useState(false);
+	const [textareaAttachedImage, setTextareaAttachedImage] = useState("");
+
 	switch (config.type) {
 		case "code":
 			return (
@@ -316,19 +384,103 @@ function InputField({
 				</div>
 			);
 
-		case "textarea":
+		case "textarea": {
+			const hasImage = config.attachable && !!textareaAttachedImage;
 			return (
 				<div className="space-y-2">
 					<Label>{config.label}</Label>
-					<Textarea
-						value={value}
-						onChange={(e) => onChange(e.target.value)}
-						placeholder={config.placeholder}
-						rows={config.rows || 4}
-						className="resize-none"
-					/>
+					<div
+						className={`relative rounded-md border border-input bg-background transition-all duration-200 ${
+							hasImage ? "ring-1 ring-primary/20" : ""
+						} ${hasImage ? "focus-within:ring-2 focus-within:ring-primary/30" : ""}`}
+					>
+						{hasImage && (
+							<div className="absolute left-2 top-2 z-10">
+								<button
+									type="button"
+									onClick={() => setTextareaShowPreview(true)}
+									className="h-12 w-12 overflow-hidden rounded-md border border-input shadow-xs hover:shadow-md transition-shadow"
+								>
+									<img
+										src={textareaAttachedImage}
+										alt="Attached"
+										className="h-full w-full object-cover"
+									/>
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										setTextareaAttachedImage("");
+										onFieldChange?.("image", "");
+									}}
+									className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-background border border-input shadow-xs hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors"
+								>
+									<X className="h-3 w-3" />
+								</button>
+							</div>
+						)}
+						<Textarea
+							value={value}
+							onChange={(e) => onChange(e.target.value)}
+							placeholder={config.placeholder}
+							rows={config.rows || 4}
+							className={`resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 ${
+								hasImage ? "pl-20" : "pl-14"
+							} min-h-[120px]`}
+						/>
+						{config.attachable && (
+							<>
+								<button
+									type="button"
+									onClick={() => {
+										setTextareaSpinning(true);
+										textareaFileRef.current?.click();
+										setTimeout(() => setTextareaSpinning(false), 400);
+									}}
+									className="absolute bottom-2 left-2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-primary transition-colors"
+								>
+									<Plus
+										className={`h-4 w-4 transition-transform duration-300 ${
+											textareaSpinning ? "rotate-180 scale-110" : ""
+										}`}
+									/>
+								</button>
+								<input
+									ref={textareaFileRef}
+									type="file"
+									accept={config.attachable.accept}
+									className="hidden"
+									onChange={(e) => {
+										const file = e.target.files?.[0];
+										if (!file) return;
+										const reader = new FileReader();
+										reader.onloadend = () => {
+											const dataUrl = reader.result as string;
+											setTextareaAttachedImage(dataUrl);
+											onFieldChange?.("image", dataUrl);
+										};
+										reader.readAsDataURL(file);
+									}}
+								/>
+							</>
+						)}
+					</div>
+					{hasImage && textareaShowPreview && (
+						<button
+							type="button"
+							className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+							onClick={() => setTextareaShowPreview(false)}
+						>
+							<img
+								src={textareaAttachedImage}
+								alt="Preview"
+								className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl animate-in zoom-in-95 duration-200"
+							/>
+						</button>
+					)}
 				</div>
 			);
+		}
 
 		case "select":
 			return (
@@ -479,7 +631,7 @@ function InputField({
 											)
 										);
 										const valid = Array.from(files).filter((f) => {
-											const ext = "." + f.name.split(".").pop()?.toLowerCase();
+											const ext = `.${f.name.split(".").pop()?.toLowerCase()}`;
 											const p = f.webkitRelativePath || f.name;
 											if (
 												p.includes("__pycache__") ||

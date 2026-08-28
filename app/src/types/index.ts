@@ -11,6 +11,8 @@ export interface InputFieldConfig {
 	options?: { value: string; label: string }[];
 	/** For "files" type: accepted file extensions (e.g. ".py,.js,.zip") */
 	accept?: string;
+	/** For "textarea" type: allows attaching files (e.g. images) */
+	attachable?: { accept: string };
 	/** For "files" type: max number of files */
 	maxFiles?: number;
 	/** For "files" type: max total upload size in MB */
@@ -55,6 +57,14 @@ export interface ToolDefinition {
 	// --- UI config ---
 	/** Declarative form field definitions */
 	inputs: InputFieldConfig[];
+	/** Custom component for rendering tool-specific results. Receives raw result string. */
+	ResultComponent?: React.ComponentType<{
+		result: string;
+		isLoading?: boolean;
+		error?: { message: string; code?: string; action?: string } | null;
+	}>;
+	/** When true, shows a length-selection (short/long) dialog before execution. */
+	requireLengthSelection?: boolean;
 }
 
 export interface CategoryInfo {
