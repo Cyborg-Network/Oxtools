@@ -10,7 +10,7 @@ import { useAuth } from "@/providers/auth-provider";
  * Shows upgrade prompt when approaching or at limit.
  */
 export function UsageCounter() {
-	const { user, usage, isLoading, isAuthenticated, redirectToLogin, redirectToUpgrade } = useAuth();
+	const { usage, isLoading, isAuthenticated, redirectToLogin, redirectToUpgrade } = useAuth();
 
 	if (isLoading) {
 		return (
@@ -71,6 +71,7 @@ export function UsageCounter() {
 
 			{!isAuthenticated && !isExhausted && (
 				<button
+					type="button"
 					onClick={redirectToLogin}
 					className="w-full text-[10px] text-primary hover:underline underline-offset-2 text-center"
 				>

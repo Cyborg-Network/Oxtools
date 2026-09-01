@@ -272,7 +272,8 @@ export function ResultViewer({
 		);
 	}
 
-	let parsedJson: { code?: string; [key: string]: any } | null = null;
+	// biome-ignore lint/suspicious/noExplicitAny: JSON parsing needs flexible type
+	let parsedJson: Record<string, any> | null = null;
 	let displayMarkdown = result;
 	let pipelineLogs = "";
 	let isReportStarted = false;
@@ -357,7 +358,7 @@ export function ResultViewer({
 									textColor = "text-red-400";
 								}
 								return (
-									<div key={i} className={`py-0.5 ${textColor}`}>
+									<div key={`log-line-${i}`} className={`py-0.5 ${textColor}`}>
 										{line}
 									</div>
 								);
@@ -417,6 +418,7 @@ export function ResultViewer({
 					{hasHtmlCode && (
 						<div className="flex border-b border-border/50 px-4 pt-3 bg-muted/20">
 							<button
+								type="button"
 								onClick={() => setActiveTab("preview")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "preview"
@@ -427,6 +429,7 @@ export function ResultViewer({
 								Preview
 							</button>
 							<button
+								type="button"
 								onClick={() => setActiveTab("code")}
 								className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
 									activeTab === "code"
